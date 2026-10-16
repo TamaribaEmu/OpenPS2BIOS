@@ -34,7 +34,6 @@ emulator versions.
   supported.
 - A game stops when it uses a system call that is not implemented yet, so that
   missing features show up as a clear failure, not as a crash later on.
-- Controller input, audio and saving have not been confirmed in any game.
 
 ## Downloads
 
