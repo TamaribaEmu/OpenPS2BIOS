@@ -112,9 +112,11 @@ int ob_iop_rpc_server_start(int sid, void *(*func)(int fno, void *buf, int size)
    commands and runs the built-in RPC servers. Commands are normally handled
    in interrupt context, so module threads must not starve it. */
 #define OB_IOP_SERVICE_PRIORITY 16
-/* Module start functions the service thread runs execute at this priority, so
-   threads they create at ordinary priorities preempt them. */
-#define OB_IOP_MODULE_START_PRIORITY 88
+/* Module entry points run at modload's loader priority, not LOADFILE's RPC
+   priority (88). Startup may create workers before initializing their semaphores;
+   those workers must not preempt it (GT4 INET creates a priority-48 worker).
+   Public reference: ps2sdk iop/system/modload/src/modload.c, ExecModuleLoad. */
+#define OB_IOP_MODULE_START_PRIORITY 8
 /* Kernel tick hook: wakes the service thread while the boot mailbox has work. */
 void ob_iop_disc_tick(void);
 void ob_iop_sifrpc_init(void);
