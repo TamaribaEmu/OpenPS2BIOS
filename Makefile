@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 NAME := OpenPS2BIOS
-VERSION := 0.1
+VERSION := 0.2
 
 CC := clang
 LD := ld.lld
