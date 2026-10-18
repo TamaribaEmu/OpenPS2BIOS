@@ -17,9 +17,8 @@ Current version: 0.2
 ## Compatibility
 
 See the [game compatibility table](COMPATIBILITY.md) for individual results.
-The listed games reach their main menus. Gameplay, saving, sound and controller
-support may still have problems; reaching a menu does not mean a game is fully
-playable.
+Testing is still limited. Reaching a title screen or menu does not establish
+that gameplay, saving, sound or controller input works correctly.
 
 OpenPS2BIOS is still in development. Results can change between BIOS builds and
 emulator versions.
@@ -58,6 +57,20 @@ make
 This produces `build/OpenPS2BIOS.bin`, a 4 MiB ROM image. In your emulator,
 select it as the BIOS.
 
+## How it was developed
+
+OpenPS2BIOS is an independent reimplementation, but calling it “clean-room”
+would overstate the process used.
+
+We use public hardware documentation, PS2SDK and PCSX2 source, and tests
+that compare our behavior with a retail BIOS. We have consulted existing
+implementations to understand how things work, including PS2SDK’s interfaces
+and module-loading behavior. We have not used a separate team to turn those
+findings into a specification for the people writing the code.
+
+No Sony firmware is included. PS2SDK and PCSX2 are references; their
+implementation code has not been copied into this project.
+
 ## Contributing
 
 Bug reports, compatibility reports and pull requests are welcome. Please check
@@ -81,11 +94,26 @@ Pull requests for documentation and compatibility updates are welcome. Describe
 what changed and include the testing details behind any compatibility update.
 For larger changes, open an issue first so we can discuss the approach.
 
-## Acknowledgements
+### Before submitting code
 
-The [PS2SDK](https://github.com/ps2dev/ps2sdk) project served as a reference for
-system call numbers, module interfaces and data structures. OpenPS2BIOS contains
-no PS2SDK code.
+Please follow the same approach:
+
+- Tell us which sources you used. Link the relevant documentation or code
+  in your pull request.
+- You can consult public documentation and projects such as PS2SDK and
+  PCSX2. Use them to understand behavior, rather than copying or translating
+  their implementations.
+- Do not use leaked Sony SDK materials, Sony BIOS source, or disassembled
+  or decompiled Sony firmware to write contributions.
+- For retail BIOS tests, report what you tested and what happened. Do not
+  upload BIOS files or game data.
+- If you want to include third-party code, discuss it first. Identify its
+  source and license, and keep any required notices.
+- Explain how you tested your change. If you are unsure where some code
+  came from or whether we can use it, say so before submitting it.
+
+We will hold off on merging code until questions about its origins are
+resolved.
 
 ## License
 
