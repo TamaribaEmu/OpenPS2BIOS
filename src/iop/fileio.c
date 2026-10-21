@@ -62,7 +62,9 @@ static const char *path_at(void *buf, unsigned offset, unsigned capacity) {
 }
 /* READ: the 64-byte aligned middle of the EE buffer is written directly; the
    unaligned head and tail go into rem = {head size, tail size, head dest,
-   tail dest, head[64], tail[64]}, which the EE library copies into place. */
+   tail dest, head[64], tail[64]}, which the EE library copies into place.
+   The head is read on its own so every later chunk starts 64-aligned on the
+   EE side too (SIF DMA refuses unaligned destinations). */
 static int fio_read(int fd, uint32_t ptr, int size, uint32_t *rem) {
     uint32_t head, tail_start, middle_end, done = 0;
     if (size < 0) return -OB_IO_EINVAL;
@@ -77,6 +79,7 @@ static int fio_read(int fd, uint32_t ptr, int size, uint32_t *rem) {
         uint32_t want = (uint32_t)size - done, lo, hi;
         int got;
         if (want > CHUNK) want = CHUNK;
+        if (done < head && want > head - done) want = head - done;
         got = ob_io_read(fd, chunk, (int)want);
         if (got < 0) { if (!done) return got; break; }
         if (!got) break;

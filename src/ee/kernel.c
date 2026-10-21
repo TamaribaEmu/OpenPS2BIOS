@@ -830,7 +830,12 @@ struct ob_ee_frame *ob_ee_exception(struct ob_ee_frame *f) {
         int result = ob_thread_delete(&scheduler, (int)a0);
         set_result(f, result ? result : (int)a0); break;
     }
-    case 0x22: set_result(f, ob_thread_start(&scheduler, (int)a0, a1, f->status)); break;
+    case 0x22: { /* StartThread: retail returns the thread ID, not 0 (probed on
+                    SCPH-39001). R&C Size Matters checks it and deletes the
+                    thread it just started otherwise. */
+        int result = ob_thread_start(&scheduler, (int)a0, a1, f->status);
+        set_result(f, result ? result : (int)a0); break;
+    }
     case 0x23: set_result(f, ob_thread_exit(&scheduler, 0)); break;
     case 0x24: set_result(f, ob_thread_exit(&scheduler, 1)); break;
     case 0x25: case -0x26:

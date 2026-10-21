@@ -336,10 +336,21 @@ static int send_ee(const void *src, uint32_t dest, uint32_t bytes) {
     seg.irq = 0;
     return ob_iop_sif0_send_chain(&seg, 1);
 }
-struct ee_read { uint32_t paddr, head, middle_end, position_dest, done; };
+struct ee_read {
+    uint32_t paddr, head, middle_end, position_dest, done;
+    uint32_t carry_n;   /* bytes held back from the previous piece */
+    uint8_t carry[16];
+};
 /* Route one streamed piece (sectors [first, first + n) of the request) to the
    head remainder, the EE buffer or the tail remainder, then publish progress
-   in bytes like cdvdfsv. */
+   in bytes like cdvdfsv.
+   EE DMA wants 16-byte aligned destinations. Only the first piece starts on
+   one; after that pieces land at paddr + k * 16 KiB, so with an odd paddr the
+   SIF send refused every piece but the first and the EE got a buffer with
+   holes (R&C Size Matters reads its text that way: no menu text at all). The
+   last few bytes of each piece are held back and sent in front of the next,
+   using the read buffers' 64 bytes of slack. The middle ends 64-aligned, so
+   nothing is left over at the end. */
 static int ee_read_sink(void *ctx, const uint8_t *data, uint32_t first, uint32_t n) {
     struct ee_read *r = ctx;
     uint32_t chunk_start = first * 2048, chunk_end = chunk_start + n * 2048, lo, hi;
@@ -347,12 +358,29 @@ static int ee_read_sink(void *ctx, const uint8_t *data, uint32_t first, uint32_t
         hi = chunk_end < r->head ? chunk_end : r->head;
         ob_copy((uint8_t *)&remainder[4] + chunk_start, data, hi - chunk_start);
     }
-    lo = chunk_start > r->head ? chunk_start : r->head;
-    hi = chunk_end < r->middle_end ? chunk_end : r->middle_end;
-    if (hi > lo) send_ee(data + (lo - chunk_start), r->paddr + lo, hi - lo);
+    /* Copy the tail out first, the middle below shifts this piece's data. */
     lo = chunk_start > r->middle_end ? chunk_start : r->middle_end;
     if (chunk_end > lo)
         ob_copy((uint8_t *)&remainder[4 + 16] + (lo - r->middle_end), data + (lo - chunk_start), chunk_end - lo);
+    lo = chunk_start > r->head ? chunk_start : r->head;
+    hi = chunk_end < r->middle_end ? chunk_end : r->middle_end;
+    if (hi > lo) {
+        uint8_t *src = (uint8_t *)data + (lo - chunk_start); /* our own read buffer */
+        uint32_t bytes = hi - lo, keep = (r->paddr + hi) & 15, i;
+        static int reported;
+        if (r->carry_n) {
+            for (i = bytes; i-- > 0;) src[i + r->carry_n] = src[i];
+            ob_copy(src, r->carry, r->carry_n);
+            bytes += r->carry_n;
+        }
+        if (bytes > keep && send_ee(src, r->paddr + hi - bytes, bytes - keep) && !reported) {
+            reported = 1;
+            ob_puts("[openbios:iop] cdvd read: EE transfer refused, dest=");
+            ob_puthex(r->paddr + hi - bytes); ob_puts("\n");
+        }
+        ob_copy(r->carry, src + bytes - keep, keep);
+        r->carry_n = keep;
+    }
     r->done = chunk_end;
     if (r->position_dest) {
         read_position[0] = chunk_end < r->middle_end ? chunk_end : r->middle_end;
@@ -387,6 +415,7 @@ static uint32_t cd_read_ee(const uint8_t *in, uint8_t *out) {
     r.middle_end = tail_start - paddr;
     r.position_dest = ob_le32(in + 20);
     r.done = 0;
+    r.carry_n = 0;
     ob_zero(remainder, sizeof(remainder));
     ob_iop_cd_read_stream(lbn, sectors, read_buffers, READ_CHUNK_SECTORS, ee_read_sink, &r, &detail);
     remainder[0] = r.head;
