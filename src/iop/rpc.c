@@ -618,8 +618,15 @@ void ob_iop_rpc_handle(const struct ob_rpc_request *r) {
     }
     if (r->command == OB_SIF_CMD_RPC_BIND) {
         if (i == SERVER_COUNT) {
-            /* Unknown server: a null server pointer makes the client retry. */
-            ob_puts("[openbios:iop] RPC bind to unknown sid="); ob_puthex(r->sid); ob_puts("\n");
+            /* Unknown server: a null server pointer makes the client retry.
+               Wait 1 ms first, a client retrying in a loop can starve the
+               module thread that's about to register it (GRAW). */
+            static uint32_t last_unknown;
+            if (r->sid != last_unknown) {
+                last_unknown = r->sid;
+                ob_puts("[openbios:iop] RPC bind to unknown sid="); ob_puthex(r->sid); ob_puts("\n");
+            }
+            ob_kernel_pause(1000);
             send_end(r, 0, 0, 0, 0);
             return;
         }
