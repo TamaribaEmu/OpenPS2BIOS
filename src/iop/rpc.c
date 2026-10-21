@@ -35,13 +35,30 @@ static uint32_t cd_init(uint32_t number, const uint8_t *in, uint32_t in_size,
     return 16;
 }
 /* IOP heap (SifAllocIopHeap/SifFreeIopHeap): fno 1 alloc(size) -> addr,
-   fno 2 free(addr) -> result, fno 4 {size, mode, addr} -> addr allocates with a
-   sysmem mode, fno 5 frees such a block. */
+   fno 2 free(addr) -> result, fno 3 {addr, path} loads a whole file to addr
+   (SifLoadIopHeap), fno 4 {size, mode, addr} -> addr allocates with a sysmem
+   mode, fno 5 frees such a block. */
 static uint32_t heap_alloc(uint32_t size) {
     return (uint32_t)(uintptr_t)ob_sysmem_alloc(OB_ALLOC_FIRST, size, 0);
 }
 static int heap_free(uint32_t addr) {
     return ob_sysmem_free((void *)(uintptr_t)addr) == KE_OK ? 0 : -1;
+}
+/* Monster Hunter's network setup (EzMIDI) loads its sound bank this way. The
+   caller sized the block from the file, so just read until EOF. Returns 0 or
+   a negative ioman error; retail's exact error codes aren't checked yet. */
+static int heap_load(uint32_t addr, const uint8_t *in, uint32_t in_size) {
+    static char path[256]; /* only the SIF thread gets here */
+    uint32_t n;
+    int fd, got;
+    for (n = 0; n + 1 < sizeof(path) && n < in_size && in[n]; ++n) path[n] = (char)in[n];
+    path[n] = 0;
+    if (!n || !addr) return -OB_IO_EINVAL;
+    fd = ob_io_open(path, OB_IO_O_RDONLY);
+    if (fd < 0) return fd;
+    while ((got = ob_io_read(fd, (void *)(uintptr_t)addr, 0x10000)) > 0) addr += (uint32_t)got;
+    ob_io_close(fd);
+    return got < 0 ? got : 0;
 }
 static uint32_t iop_heap(uint32_t number, const uint8_t *in, uint32_t in_size,
                          uint8_t *out, uint32_t out_size) {
@@ -49,6 +66,7 @@ static uint32_t iop_heap(uint32_t number, const uint8_t *in, uint32_t in_size,
     if (out_size < 4) return 0;
     if (number == 1) result = heap_alloc(value);
     else if (number == 2 || number == 5) result = (uint32_t)heap_free(value);
+    else if (number == 3 && in_size > 4) result = (uint32_t)heap_load(value, in + 4, in_size - 4);
     else if (number == 6) result = ob_sysmem_largest_free(); /* QueryMaxFreeMemSize */
     else if (number == 7) result = ob_sysmem_free_size();    /* QueryTotalFreeMemSize */
     else if (number == 4 && in_size >= 12 && ob_le32(in + 4) <= OB_ALLOC_ADDRESS)

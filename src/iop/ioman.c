@@ -231,14 +231,26 @@ static void stat_from_entry(const struct ob_iso_entry *e, struct ob_io_stat *st)
     ob_copy(st->ctime, st->mtime, 8);
     ob_copy(st->atime, st->mtime, 8);
 }
+/* Mounting and walking directories keeps a 2 KiB sector on the stack, more
+   than a lot of module threads have (MH's EzMIDI thread overflowed into its
+   neighbour opening EFF.BD). Do it on cdvdman's lookup stack. */
+struct cd_lookup_args { const char *name; struct ob_iso_entry *e; };
+static int cd_lookup_thunk(void *p) {
+    struct cd_lookup_args *a = p;
+    const struct ob_iso *iso = ob_iop_cd_iso();
+    return !iso || ob_iso_lookup(iso, a->name, a->e);
+}
+static int cd_lookup(const char *name, struct ob_iso_entry *e) {
+    struct cd_lookup_args a = {name, e};
+    return ob_iop_cd_on_stack(cd_lookup_thunk, &a);
+}
 static int cd_open(struct ob_iop_file *f, const char *name, int flags) {
     struct ob_iso_entry e;
     struct cd_handle *h;
-    const struct ob_iso *iso = ob_iop_cd_iso();
     /* The mode is ignored: callers pass cdvdman read-speed hints in it
        (the low half and bit 30). */
     (void)flags;
-    if (!iso || ob_iso_lookup(iso, name, &e)) return -OB_IO_ENOENT;
+    if (cd_lookup(name, &e)) return -OB_IO_ENOENT;
     if (e.flags & 2) return -OB_IO_EISDIR;
     if (!(h = cd_alloc())) return -OB_IO_EMFILE;
     h->lba = e.lba; h->size = e.size; h->pos = 0;
@@ -248,8 +260,7 @@ static int cd_open(struct ob_iop_file *f, const char *name, int flags) {
 static int cd_dopen(struct ob_iop_file *f, const char *name) {
     struct ob_iso_entry e;
     struct cd_handle *h;
-    const struct ob_iso *iso = ob_iop_cd_iso();
-    if (!iso || ob_iso_lookup(iso, name, &e)) return -OB_IO_ENOENT;
+    if (cd_lookup(name, &e)) return -OB_IO_ENOENT;
     if (!(e.flags & 2)) return -OB_IO_ENOTDIR;
     if (!(h = cd_alloc())) return -OB_IO_EMFILE;
     h->lba = e.lba; h->size = e.size; h->pos = 0;
@@ -294,12 +305,18 @@ static int cd_lseek(struct ob_iop_file *f, int offset, int whence) {
     h->pos = (uint32_t)(base + offset);
     return (int)h->pos;
 }
+struct cd_dread_args { struct cd_handle *h; struct ob_iso_entry *e; };
+static int cd_dread_thunk(void *p) {
+    struct cd_dread_args *a = p;
+    const struct ob_iso *iso = ob_iop_cd_iso();
+    return !iso || ob_iso_dir_next(iso, a->h->lba, a->h->size, &a->h->pos, a->e);
+}
 static int cd_dread(struct ob_iop_file *f, struct ob_io_dirent *d) {
     struct cd_handle *h = f->privdata;
     struct ob_iso_entry e;
-    const struct ob_iso *iso = ob_iop_cd_iso();
+    struct cd_dread_args a = {h, &e};
     unsigned i;
-    if (!iso || ob_iso_dir_next(iso, h->lba, h->size, &h->pos, &e)) return 0;
+    if (ob_iop_cd_on_stack(cd_dread_thunk, &a)) return 0;
     stat_from_entry(&e, &d->stat);
     for (i = 0; e.name[i] && i < sizeof(d->name) - 1; ++i) d->name[i] = e.name[i];
     d->name[i] = 0;
@@ -308,9 +325,8 @@ static int cd_dread(struct ob_iop_file *f, struct ob_io_dirent *d) {
 }
 static int cd_getstat(struct ob_iop_file *f, const char *name, struct ob_io_stat *st) {
     struct ob_iso_entry e;
-    const struct ob_iso *iso = ob_iop_cd_iso();
     (void)f;
-    if (!iso || ob_iso_lookup(iso, name, &e)) return -OB_IO_ENOENT;
+    if (cd_lookup(name, &e)) return -OB_IO_ENOENT;
     stat_from_entry(&e, st);
     return 0;
 }

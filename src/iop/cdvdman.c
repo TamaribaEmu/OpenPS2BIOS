@@ -274,13 +274,9 @@ static int search_file(struct cd_file *fp, const char *path, int layer) {
 int ob_iop_call_on_stack(int (*fn)(void *), void *arg, void *stack_top);
 static uint8_t search_stack[12 * 1024] __attribute__((aligned(16)));
 static volatile int search_busy;
-struct search_args { struct cd_file *fp; const char *path; int layer; };
-static int search_thunk(void *p) {
-    struct search_args *a = p;
-    return search_file(a->fp, a->path, a->layer);
-}
-static int search_on_stack(struct cd_file *fp, const char *path, int layer) {
-    struct search_args a = {fp, path, layer};
+/* Also used by the cdrom device in ioman (open/dopen/dread/getstat all walk
+   ISO sectors). fn must not call back in here, it would wait on itself. */
+int ob_iop_cd_on_stack(int (*fn)(void *), void *arg) {
     int r;
     for (;;) {
         uint32_t s = irq_lock();
@@ -288,9 +284,18 @@ static int search_on_stack(struct cd_file *fp, const char *path, int layer) {
         irq_unlock(s);
         ob_kernel_pause(200);
     }
-    r = ob_iop_call_on_stack(search_thunk, &a, search_stack + sizeof(search_stack));
+    r = ob_iop_call_on_stack(fn, arg, search_stack + sizeof(search_stack));
     search_busy = 0;
     return r;
+}
+struct search_args { struct cd_file *fp; const char *path; int layer; };
+static int search_thunk(void *p) {
+    struct search_args *a = p;
+    return search_file(a->fp, a->path, a->layer);
+}
+static int search_on_stack(struct cd_file *fp, const char *path, int layer) {
+    struct search_args a = {fp, path, layer};
+    return ob_iop_cd_on_stack(search_thunk, &a);
 }
 static int sceCdSearchFile(struct cd_file *fp, const char *path) { return search_on_stack(fp, path, 0); }
 static int sceCdLayerSearchFile(struct cd_file *fp, const char *path, int layer) {

@@ -31,6 +31,9 @@ struct ob_iso;
 const struct ob_iso *ob_iop_cd_iso(void);
 /* The second layer's volume of a dual-layer DVD and its first LSN, or 0. */
 const struct ob_iso *ob_iop_cd_iso_layer1(uint32_t *base);
+/* Runs fn(arg) on cdvdman's 12 KiB lookup stack, one caller at a time. ISO
+   walks keep whole sectors on the stack and module threads are small. */
+int ob_iop_cd_on_stack(int (*fn)(void *), void *arg);
 int ob_iop_cd_read_sectors(uint32_t lba, uint32_t count, void *dest);
 void ob_iop_disc_reboot(void);
 /* One drive command for count sectors, delivered in chunk-sector pieces that

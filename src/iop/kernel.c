@@ -58,6 +58,7 @@ uint64_t ob_iop_system_time(void) {
 #define KE_FOUND_HANDLER (-104)
 #define KE_NOTFOUND_ALARM (-105) /* KE_NOTFOUND_HANDLER */
 static void run_alarms(uint64_t now);
+static void drop_alarms(void);
 static uint32_t seen_irq[2];
 #ifdef OB_TRACE_RPC
 static uint32_t irq_counts[0x30];
@@ -176,6 +177,9 @@ void ob_iop_kernel_reset(void) {
     ob_zero(k.vpls, sizeof(k.vpls));
     ob_zero(k.mbxs, sizeof(k.mbxs));
     ob_zero(handlers, sizeof(handlers));
+    /* Alarm callbacks point into module code that the reboot is about to wipe,
+       and TIMER5 keeps ticking. (INET/SMAP/PPP leave theirs armed.) */
+    drop_alarms();
     I_MASK = (1u << INTR_TIMER5) | (1u << INTR_DMA);
     DICR = (DICR & 0x00800000u);
     DICR2 = 0;
@@ -371,6 +375,7 @@ static void SysClock2USec(iop_sys_clock_t *c, uint32_t *sec, uint32_t *usec) {
    expiry. Expiry is checked on the kernel tick (1 ms). */
 #define ALARMS 64
 static struct { uint32_t cb, arg, gp; uint64_t target; } alarms[ALARMS];
+static void drop_alarms(void) { ob_zero(alarms, sizeof(alarms)); }
 static int add_alarm(iop_sys_clock_t *c, uint32_t cb, uint32_t arg, uint32_t gp) {
     uint64_t delay;
     unsigned i, free_slot = ALARMS;
