@@ -33,6 +33,14 @@ int ob_ee_disc_load(const char *path, uint32_t *entry) {
         uint32_t off = ob_le32(ph + 4), addr = ob_le32(ph + 8), filesz = ob_le32(ph + 16),
                  memsz = ob_le32(ph + 20);
         if (ob_le32(ph) != 1 || (!memsz && !filesz)) continue;
+        /* Scratchpad segment (MK Deadly Alliance). */
+        if (addr >= 0x70000000u && ob_range(addr - 0x70000000u, memsz, 0x4000u) &&
+            ob_range(off, filesz, file.size) && filesz <= memsz) continue;
+        /* No RAM past 32 MB on retail. Soulcalibur II has a .text2 there. */
+        if (addr >= 0x02000000u) {
+            ob_puts("[openbios:disc] skipping segment above RAM at "); ob_puthex(addr); ob_puts("\n");
+            continue;
+        }
         if (filesz > memsz || !ob_range(off, filesz, file.size) || addr < 0x00100000u ||
             !ob_range(addr, memsz, 0x02000000u)) return OB_EBOUNDS;
         if (*entry >= addr && *entry - addr < filesz) executable = 1;
@@ -43,7 +51,9 @@ int ob_ee_disc_load(const char *path, uint32_t *entry) {
         uint32_t off = ob_le32(ph + 4), addr = ob_le32(ph + 8), filesz = ob_le32(ph + 16),
                  memsz = ob_le32(ph + 20);
         uint8_t *dest = (uint8_t *)(uintptr_t)(0xa0000000u | addr);
-        if (ob_le32(ph) != 1 || (!memsz && !filesz)) continue;
+        int spr = addr >= 0x70000000u && ob_range(addr - 0x70000000u, memsz, 0x4000u);
+        if (ob_le32(ph) != 1 || (!memsz && !filesz) || (addr >= 0x02000000u && !spr)) continue;
+        if (spr) dest = (uint8_t *)(uintptr_t)addr; /* mapped by the kernel TLB */
         if (filesz) {
             result = ob_iso_read(&iso, &file, off, dest, filesz);
             if (result) return result;
