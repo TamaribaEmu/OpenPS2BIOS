@@ -650,6 +650,13 @@ void ob_iop_rpc_handle(const struct ob_rpc_request *r) {
         ob_zero((void *)REPLY_DATA_IOP, REPLY_DATA_MAX);
         bytes = servers[i].call(r->rpc_number, (const uint8_t *)(descriptor(i) | 0xa0000000u),
                                 in_size, (uint8_t *)REPLY_DATA_IOP, out_size);
+        if (servers[i].sid == 0x80000006u) {
+            /* Retail replies to LOADFILE from a priority 88 thread, so the
+               module's new threads run first. Budokai 2 binds right after the
+               load and only tries once. */
+            int old = ob_kernel_set_priority(88);
+            ob_kernel_set_priority(old);
+        }
         send_end(r, r->server, 0, REPLY_DATA_IOP, bytes);
     }
 }
