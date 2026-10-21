@@ -5,6 +5,11 @@ static struct ob_thread *thread(struct ob_scheduler *s, int id) {
     if (id <= 0 || id > OB_MAX_THREADS || s->threads[id-1].state == OB_UNUSED) return 0;
     return &s->threads[id-1];
 }
+/* Thread IDs passed in by the program. The last slot is the kernel's idle
+   thread and stays hidden (007 Nightfire deletes every thread it finds). */
+static struct ob_thread *user_thread(struct ob_scheduler *s, int id) {
+    return id == OB_MAX_THREADS ? 0 : thread(s, id);
+}
 static struct ob_sema *sema(struct ob_scheduler *s, int id) {
     if (id <= 0 || id > OB_MAX_SEMAS || !s->semas[id-1].used) return 0;
     return &s->semas[id-1];
@@ -72,7 +77,7 @@ int ob_thread_create(struct ob_scheduler *s, const struct ob_thread_desc *d) {
 }
 int ob_thread_start(struct ob_scheduler *s, int id, uint32_t arg, uint32_t status) {
     s->changed = 1;
-    struct ob_thread *t = thread(s, id);
+    struct ob_thread *t = user_thread(s, id);
     if (!t) return OB_EINVAL;
     if (t->state != OB_DORMANT) return OB_EBUSY;
     ob_zero(&t->frame, sizeof(t->frame));
@@ -89,7 +94,7 @@ int ob_thread_start(struct ob_scheduler *s, int id, uint32_t arg, uint32_t statu
 }
 int ob_thread_delete(struct ob_scheduler *s, int id) {
     s->changed = 1;
-    struct ob_thread *t = thread(s, id);
+    struct ob_thread *t = user_thread(s, id);
     if (!t) return OB_EINVAL;
     if (t->state != OB_DORMANT) return OB_EBUSY;
     ob_zero(t, sizeof(*t));
@@ -117,7 +122,7 @@ int ob_thread_sleep(struct ob_scheduler *s) {
 }
 int ob_thread_wake(struct ob_scheduler *s, int id) {
     s->changed = 1;
-    struct ob_thread *t = thread(s, id);
+    struct ob_thread *t = user_thread(s, id);
     if (!t) return OB_EINVAL;
     if (t->state == OB_DORMANT || id == s->current) return OB_EBUSY;
     if (t->state == OB_WAITING && t->wait_type == OB_WAIT_SLEEP) ready(s, t, 0);
@@ -129,7 +134,7 @@ int ob_thread_wake(struct ob_scheduler *s, int id) {
 }
 int ob_thread_priority(struct ob_scheduler *s, int id, int priority) {
     s->changed = 1;
-    struct ob_thread *t = thread(s, id ? id : s->current);
+    struct ob_thread *t = user_thread(s, id ? id : s->current);
     if (!t || priority < 0 || priority > 127) return OB_EINVAL;
     if (t->state == OB_DORMANT) return OB_EBUSY;
     t->desc.current_priority = priority;
@@ -150,7 +155,7 @@ int ob_thread_rotate(struct ob_scheduler *s, int priority) {
     return OB_OK;
 }
 int ob_thread_status(struct ob_scheduler *s, int id, struct ob_thread_status *out) {
-    struct ob_thread *t = thread(s, id ? id : s->current);
+    struct ob_thread *t = user_thread(s, id ? id : s->current);
     if (!t || !out) return OB_EINVAL;
     out->desc = t->desc;
     switch (t->state) {
@@ -171,7 +176,7 @@ int ob_thread_status(struct ob_scheduler *s, int id, struct ob_thread_status *ou
 int ob_thread_suspend(struct ob_scheduler *s, int id) {
     s->changed = 1;
     int target = id ? id : s->current;
-    struct ob_thread *t = thread(s, target);
+    struct ob_thread *t = user_thread(s, target);
     if (!t) return OB_EINVAL;
     if (t->state == OB_DORMANT) return OB_EBUSY;
     if (target != s->current) t->suspended = 1;
@@ -179,7 +184,7 @@ int ob_thread_suspend(struct ob_scheduler *s, int id) {
 }
 int ob_thread_resume(struct ob_scheduler *s, int id) {
     s->changed = 1;
-    struct ob_thread *t = thread(s, id);
+    struct ob_thread *t = user_thread(s, id);
     if (!t) return OB_EINVAL;
     if (t->suspended) {
         t->suspended = 0;
@@ -188,7 +193,7 @@ int ob_thread_resume(struct ob_scheduler *s, int id) {
     return id;
 }
 int ob_thread_cancel_wakeup(struct ob_scheduler *s, int id) {
-    struct ob_thread *t = thread(s, id ? id : s->current);
+    struct ob_thread *t = user_thread(s, id ? id : s->current);
     int previous;
     if (!t) return OB_EINVAL;
     previous = (int)t->wakeups;
@@ -197,7 +202,7 @@ int ob_thread_cancel_wakeup(struct ob_scheduler *s, int id) {
 }
 int ob_thread_release(struct ob_scheduler *s, int id) {
     s->changed = 1;
-    struct ob_thread *t = thread(s, id);
+    struct ob_thread *t = user_thread(s, id);
     if (!t) return OB_EINVAL;
     if (t->state != OB_WAITING) return OB_EBUSY;
     ready(s, t, OB_EBUSY);
@@ -205,7 +210,7 @@ int ob_thread_release(struct ob_scheduler *s, int id) {
 }
 int ob_thread_terminate(struct ob_scheduler *s, int id) {
     s->changed = 1;
-    struct ob_thread *t = thread(s, id);
+    struct ob_thread *t = user_thread(s, id);
     if (!t) return OB_EINVAL;
     if (id == s->current || t->state == OB_DORMANT) return OB_EBUSY;
     t->state = OB_DORMANT;

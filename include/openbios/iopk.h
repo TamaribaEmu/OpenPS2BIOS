@@ -7,7 +7,8 @@
    performs the switch the core selects and drives the clock. */
 #include "base.h"
 
-#define OBK_THREADS 64
+/* Retail has no fixed thread limit. 64 wasn't enough for 007 Nightfire. */
+#define OBK_THREADS 128
 #define OBK_SEMAS 128
 #define OBK_EVENTS 64
 #define OBK_FPLS 32
