@@ -58,6 +58,7 @@
 #define OBK_WAIT_DELETE (-425)
 #define OBK_ILLEGAL_MEMBLOCK (-426)
 #define OBK_ILLEGAL_MEMSIZE (-427)
+#define OBK_ILLEGAL_SIZE (-432)
 /* Returned to the glue when the calling thread must block. */
 #define OBK_BLOCK 1
 

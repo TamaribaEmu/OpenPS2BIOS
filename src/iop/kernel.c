@@ -326,6 +326,28 @@ static int ReferThreadStatus(int id, iop_thread_info_t *info) {
     uint32_t s = lock(); int r = refer_thread(id, info); unlock(s); return r;
 }
 static int iReferThreadStatus(int id, iop_thread_info_t *info) { return refer_thread(id, info); }
+/* thbase #45 (RE4 imports it). Layout per ps2sdk's iop_thread_run_status_t:
+   status, current priority, wait type, wait id, wakeups, register context,
+   run clocks (8), then intr/thread preempt and release counts. We don't keep
+   the counters, so those stay 0. */
+static int ReferThreadRunStatus(int id, uint32_t *stat, uint32_t size) {
+    struct obk_thread *t;
+    uint32_t s;
+    if (in_interrupt) return OBK_ILLEGAL_CONTEXT;
+    s = lock();
+    t = obk_thread(&k, id ? id : k.current);
+    if (!t) { unlock(s); return OBK_UNKNOWN_THID; }
+    if (size < 44) { unlock(s); return OBK_ILLEGAL_SIZE; }
+    ob_zero(stat, size);
+    stat[0] = (uint32_t)t->status;
+    stat[1] = (uint32_t)t->priority;
+    stat[2] = (uint32_t)t->wait_type;
+    stat[3] = (uint32_t)t->wait_id;
+    stat[4] = (uint32_t)t->wakeups;
+    stat[5] = (uint32_t)(uintptr_t)&t->context;
+    unlock(s);
+    return OBK_OK;
+}
 static int SleepThread(void) {
     uint32_t s;
     int r;
@@ -914,6 +936,7 @@ void ob_iop_kernel_libraries_init(void) {
     thbase.f[37] = FN(CancelAlarm);   thbase.f[38] = FN(iCancelAlarm);
     thbase.f[39] = FN(USec2SysClock); thbase.f[40] = FN(SysClock2USec);
     thbase.f[42] = FN(GetThreadCurrentPriority); thbase.f[43] = FN(GetSystemTimeLow);
+    thbase.f[45] = FN(ReferThreadRunStatus);
     thsemap.f[4] = FN(CreateSema); thsemap.f[5] = FN(DeleteSema);
     thsemap.f[6] = FN(SignalSema); thsemap.f[7] = FN(iSignalSema);
     thsemap.f[8] = FN(WaitSema);   thsemap.f[9] = FN(PollSema);
