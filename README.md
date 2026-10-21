@@ -4,7 +4,7 @@ An experimental replacement PlayStation 2 BIOS by Tamariba Devs, developed for
 emulators and tested in PCSX2. It includes an original boot screen and the EE and
 IOP kernels needed to start PS2 software. No Sony firmware is included.
 
-Current version: 0.2
+Current version: 0.3
 
 > [!WARNING]
 > **For emulator use only. Do not flash or install this BIOS on a real PS2.**
