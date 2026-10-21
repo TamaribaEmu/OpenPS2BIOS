@@ -86,6 +86,22 @@ int ob_irx_load(const void *file, uint32_t size, const struct ob_irx_info *info,
         for (i = 0; i < info->rels[r].count; ++i, rel += 8) {
             uint32_t where = ob_le32(rel), type = ob_le32(rel + 4) & 0xff, word;
             if (type == R_MIPS_NONE) continue;
+            /* Some old linkers pad HI16/LO16 pairs with an entry at offset -4
+               (LOTR Fellowship's RSRCIOP.IRX has 19 of them): a HI16 shared by
+               several LO16s, or a LO16 shared by several HI16s. Nothing to
+               patch there. The loader in retail just pokes the word before the
+               module. A padded LO16 still ends the pending HI16s, with low 0. */
+            if (where == 0xfffffffcu && type == R_MIPS_HI16) continue;
+            if (where == 0xfffffffcu && type == R_MIPS_LO16) {
+                uint32_t k;
+                for (k = 0; k < nhi; ++k) {
+                    uint32_t h = ob_le32(image + hi[k]);
+                    uint32_t value = (h << 16) + base;
+                    put32(image + hi[k], (h & 0xffff0000u) | (((value + 0x8000u) >> 16) & 0xffff));
+                }
+                nhi = 0;
+                continue;
+            }
             if (!fits(info, where)) return OB_EBOUNDS;
             word = ob_le32(image + where);
             switch (type) {
