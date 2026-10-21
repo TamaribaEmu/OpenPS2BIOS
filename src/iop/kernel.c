@@ -262,6 +262,29 @@ static int StartThread(int id, uint32_t arg) {
     unlock(s);
     return r;
 }
+/* thbase #7. Same as StartThread, but copies args bytes from argp to the top
+   of the stack and passes a0 = args, a1 = the copy. */
+static int StartThreadArgs(int id, int args, void *argp) {
+    struct obk_thread *t;
+    uint32_t s, n = args > 0 ? ((uint32_t)args + 3) & ~3u : 0, at;
+    int r;
+    if (in_interrupt) return OBK_ILLEGAL_CONTEXT;
+    if (!id) return OBK_ILLEGAL_THID;
+    s = lock();
+    t = obk_thread(&k, id);
+    if (t && t->stack_size < n + 0xb8) { unlock(s); return OBK_ILLEGAL_STACK_SIZE; }
+    r = obk_thread_start(&k, id, (uint32_t)args, (uint32_t)(uintptr_t)ob_iop_thread_return);
+    if (!r) {
+        at = t->stack + t->stack_size - n;
+        if (n && argp) ob_copy((void *)(uintptr_t)at, argp, (uint32_t)args);
+        t->context.r[5] = at;
+        t->context.r[29] = at & ~7u;
+        ob_zero((void *)(uintptr_t)(t->context.r[29] - 0xb8), 0xb8);
+        maybe_preempt();
+    }
+    unlock(s);
+    return r;
+}
 /* Internal: create and start a kernel-owned thread (built-in services). */
 int ob_kernel_spawn(void (*entry)(void *), void *arg, int priority, uint32_t stack_size) {
     iop_thread_t p;
@@ -921,6 +944,7 @@ void ob_iop_kernel_libraries_init(void) {
         thbase.f[i] = thsemap.f[i] = thevent.f[i] = intrman.f[i] = FN(ret_zero);
     thbase.f[4] = FN(CreateThread);   thbase.f[5] = FN(DeleteThread);
     thbase.f[6] = FN(StartThread);    thbase.f[8] = FN(ExitThread);
+    thbase.f[7] = FN(StartThreadArgs);
     thbase.f[9] = FN(ExitDeleteThread); thbase.f[10] = FN(TerminateThread);
     thbase.f[11] = FN(iTerminateThread);
     thbase.f[14] = FN(ChangeThreadPriority); thbase.f[15] = FN(iChangeThreadPriority);
