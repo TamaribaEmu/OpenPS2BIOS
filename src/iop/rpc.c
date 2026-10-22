@@ -499,6 +499,17 @@ static uint32_t cd_ncmd(uint32_t number, const uint8_t *in, uint32_t in_size,
         if (in_size < 16) break;
         put32(out, cd_stream(in));
         return 4;
+    case 13: { /* READIOPMEM: read into IOP memory */
+        uint32_t lbn, sectors, dest;
+        int ok;
+        if (in_size < 24) break;
+        lbn = ob_le32(in); sectors = ob_le32(in + 4); dest = ob_le32(in + 20);
+        ok = sectors && !ob_iop_cd_read_sectors(lbn, sectors, (void *)(uintptr_t)(ob_le32(in + 8) & 0x1fffffu));
+        read_position[0] = ok ? sectors * 2048 : 0;
+        if (dest) send_ee(read_position, dest, 16);
+        put32(out, (uint32_t)ok);
+        return 4;
+    }
     case 14: /* DISKREADY */
         put32(out, (CDVD_REG(0x05) & 0xc0) == 0x40 ? 2 : 6);
         return 4;
