@@ -777,9 +777,10 @@ struct ob_ee_frame *ob_ee_exception(struct ob_ee_frame *f) {
         uint32_t top, stack = a1;
         struct ob_thread *root = &scheduler.threads[scheduler.current - 1];
         ptr = ob_ee_user_pointer(f->gpr[7][0], 324);
-        if (!ptr || a2 < 256 || a2 > 0x01e00000u) { set_result(f, OB_EINVAL); break; }
+        /* Size 0 is allowed (Crash Twinsanity). */
+        if (!ptr || a2 > 0x01e00000u) { set_result(f, OB_EINVAL); break; }
         if (stack == UINT32_MAX) stack = 0x02000000u - a2;
-        if (!ob_ee_user_pointer(stack, a2)) { set_result(f, OB_EINVAL); break; }
+        if (a2 && !ob_ee_user_pointer(stack, a2)) { set_result(f, OB_EINVAL); break; }
         top = (stack + a2) & ~15u;
         ob_zero(ptr, 324);
         {   /* {argc, argv[16], strings[256]}; argv points into the caller's area. */
