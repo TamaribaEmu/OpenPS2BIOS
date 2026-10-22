@@ -165,7 +165,19 @@ static struct server *sceSifGetNextRequest(struct queue *q) {
 }
 static void sceSifExecRequest(struct server *s) {
     struct ob_rpc_request r;
+    uint32_t keep[32] __attribute__((aligned(16)));
     void *result = s->func(s->rpc_number, s->buf, s->size);
+    /* Some servers return a buffer from their own (now dead) stack frame,
+       e.g. Killer 7's sound module. Copy it up before any call reuses that
+       stack. Plain volatile copy so it can't turn into a memcpy call. */
+    if (result && (uintptr_t)result < (uintptr_t)keep &&
+        (uintptr_t)keep - (uintptr_t)result <= 0x1000u &&
+        s->rsize > 0 && (uint32_t)s->rsize <= sizeof(keep)) {
+        volatile uint32_t *from = result, *to = keep;
+        unsigned i;
+        for (i = 0; i < ((uint32_t)s->rsize + 3) / 4; ++i) to[i] = from[i];
+        result = keep;
+    }
     ob_zero(&r, sizeof(r));
     r.command = OB_SIF_CMD_RPC_CALL;
     r.rec_id = (uint32_t)s->rid;
