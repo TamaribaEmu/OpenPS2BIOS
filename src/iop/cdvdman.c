@@ -253,7 +253,8 @@ static int search_file(struct cd_file *fp, const char *path, int layer) {
 #ifdef OB_TRACE_RPC
     ob_puts("[openbios:cdvdman] search "); ob_puts(path); ob_puts("\n");
 #endif
-    if (!iso || ob_iso_lookup(iso, path, &e) || (e.flags & 2)) return 0;
+    /* Directories count too, the root doesn't. */
+    if (!iso || ob_iso_lookup(iso, path, &e) || (e.flags & 2 && e.name[0] == '.')) return 0;
     for (i = 0; path[i]; ++i) if (path[i] == '\\' || path[i] == '/' || path[i] == ':') base = path + i + 1;
     ob_zero(fp, sizeof(*fp));
     fp->lsn = e.lba + offset;

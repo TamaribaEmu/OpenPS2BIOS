@@ -7,6 +7,7 @@
 #include "openbios/ioman.h"
 #include "openbios/rom.h"
 #include "openbios/disc.h"
+#include "openbios/iso9660.h"
 
 #define RPC_AREA_IOP 0xa0088800u   /* Server buffers, 1 KiB each (up to the hole end). */
 #define RPC_BUFFER_SIZE 0x400u
@@ -296,7 +297,12 @@ static uint32_t cd_search(uint32_t number, const uint8_t *in, uint32_t in_size,
     if (in_size < 0x124 || out_size < 4) return 0;
     ob_copy(path, packet + path_offset, 256);
     path[256] = 0;
-    found = !ob_iop_cd_find(path, &lba, &size);
+    {   /* Directories count too, like in cdvdman. */
+        struct ob_iso_entry e;
+        const struct ob_iso *iso = ob_iop_cd_iso();
+        found = iso && !ob_iso_lookup(iso, path, &e) && !(e.flags & 2 && e.name[0] == '.');
+        if (found) { lba = e.lba; size = e.size; }
+    }
     ob_zero(packet, 32);
     if (found) {
         put32(packet, lba);
