@@ -143,11 +143,12 @@ static int extended(const struct ob_iop_device *d) { return (d->type & OB_IO_DT_
     return d->ops->op call; \
 } while (0)
 static int io_rename(const char *name, const char *new_name) {
-    const char *new_rest;
-    int new_unit;
+    const char *new_rest, *old_rest;
+    int new_unit, old_unit;
     struct ob_iop_device *nd = parse(new_name, &new_unit, &new_rest);
-    /* The new name may omit the device; a different device cannot be targeted. */
-    if (nd && nd != parse(name, &new_unit, &new_rest)) return -OB_IO_EXDEV;
+    /* The new name may omit the device; a different device cannot be targeted.
+       (Checked with separate variables: new_rest is what the driver gets.) */
+    if (nd && nd != parse(name, &old_unit, &old_rest)) return -OB_IO_EXDEV;
     if (!nd) new_rest = new_name;
     EXT_PATH_OP(rename, (&tmp, rest, new_rest));
 }
