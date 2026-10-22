@@ -50,7 +50,9 @@ static struct ob_iop_device *parse(const char *path, int *unit, const char **res
 static int alloc_fd(void) {
     uint32_t s = lock();
     int i;
-    for (i = 0; i < FILES; ++i) if (!files[i].used) { files[i].used = 1; break; }
+    /* On retail 0 and 1 are the console (stdio opens tty at boot), so the
+       first file is 2. Over the Hedge's IO driver treats fd 0 as a failure. */
+    for (i = 2; i < FILES; ++i) if (!files[i].used) { files[i].used = 1; break; }
     unlock(s);
     return i < FILES ? i : -OB_IO_EMFILE;
 }
