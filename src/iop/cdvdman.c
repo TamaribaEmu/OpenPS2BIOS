@@ -312,6 +312,35 @@ static int sceCdRI(uint8_t *id, uint32_t *result) {
     for (i = 0; i < 8; ++i) id[i] = r[1 + i];
     return 1;
 }
+/* From the DNAS version of cdvdman. */
+static int sceCdReadGUID(uint32_t *guid) {
+    uint8_t id[8];
+    uint32_t result = 1;
+    if (!sceCdRI(id, &result) || result) return 0;
+    guid[0] = id[0] | 0x08004600u;
+    guid[1] = id[4] | id[5] << 8 | id[6] << 16 | (uint32_t)id[7] << 24;
+    return 1;
+}
+static int sceCdReadModelID(uint32_t *model) {
+    uint8_t id[8];
+    uint32_t result = 1;
+    if (!sceCdRI(id, &result) || result) return 0;
+    *model = id[1] | id[2] << 8 | id[3] << 16;
+    return 1;
+}
+static int sceCdReadDiskID(uint8_t *id) {
+    static uint8_t sector[2048];
+    static const uint8_t params[7] = {0, 0, 0, 0x4b, 0, 0, 0};
+    uint8_t type = CDVD_REG(0x0f);
+    unsigned i;
+    for (i = 0; i < 5; ++i) id[i] = 0;
+    if (type < 0x12 || type > 0x14) return 0;
+    if (busy || ob_iop_cd_read_sectors(0x4b, 1, sector)) return 0;
+    if (ob_iop_cd_ncommand(0x0c, params, sizeof(params))) return 0; /* read key */
+    if (!(CDVD_REG(0x38) & 4)) return 0;
+    for (i = 0; i < 5; ++i) id[i] = CDVD_REG(0x30 + i) ^ CDVD_REG(0x39);
+    return 1;
+}
 /* sceCdRC: the raw MECHACON clock read (S-command 0x08, 8 bytes). */
 static int sceCdRC(void *clock) {
     uint8_t r[8] = {0};
@@ -471,7 +500,9 @@ void ob_iop_cdvdman_init(void) {
     cdvdman.f[67] = FN(sceCdStPause);   cdvdman.f[68] = FN(sceCdStResume);
     cdvdman.f[74] = FN(sceCdPowerOff);  cdvdman.f[75] = FN(sceCdMmode);
     cdvdman.f[77] = FN(sceCdStSeekF);   cdvdman.f[78] = FN(sceCdPOffCallback);
-    cdvdman.f[81] = FN(sceCdSetTimeout); cdvdman.f[83] = FN(sceCdReadDvdDualInfo);
+    cdvdman.f[79] = FN(sceCdReadDiskID); cdvdman.f[80] = FN(sceCdReadGUID);
+    cdvdman.f[81] = FN(sceCdSetTimeout); cdvdman.f[82] = FN(sceCdReadModelID);
+    cdvdman.f[83] = FN(sceCdReadDvdDualInfo);
     cdvdman.f[84] = FN(sceCdLayerSearchFile);
     cdvdman.f[114] = FN(sceCdRE);
     ob_iop_register_builtin((void *)&cdvdman, 115);
