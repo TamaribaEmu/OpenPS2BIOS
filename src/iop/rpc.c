@@ -238,6 +238,8 @@ static uint32_t cd_scmd(uint32_t number, const uint8_t *in, uint32_t in_size,
         if (out_size >= 8) { put32(out + 4, 0); bytes = 8; }
         break;
     case 12: put32(out, CDVD_REG(0x0a)); return 4;  /* STATUS */
+    case 22: /* BREAK: reads are already done here */
+        break;
     case 0x27: { /* READ DVD DUAL INFO: {result, on_dual, layer 1 start} */
         int dual;
         uint32_t layer1;
