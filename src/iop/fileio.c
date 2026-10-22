@@ -220,12 +220,24 @@ static void *record_request(int fno, void *buf) {
         break;
     case FIO_FORMAT: r = ob_io_format(path_at(buf, 0xc, 0x400)); break;
     case FIO_DEVCTL: {
-        /* Only a missing device is handled: that is -ENODEV for any command. */
-        const char *name = path_at(buf, 0xc, 0x40);
-        r = ob_io_devctl(name, 0, 0, 0, 0, 0);
-        if (r != -OB_IO_ENODEV) {
-            ob_puts("[openbios:iop] fileio devctl on "); ob_puts(name); ob_puts(" not supported\n");
-            r = -OB_IO_EUNSUP;
+        /* {name[0x400], arg[0x400], cmd, arglen, EE buf, buflen}, as seen from
+           Monster Hunter's network tool (devctl "dev9x:" 0x4402 to power the
+           adapter off on exit). The buf/buflen words are a guess so far, only
+           calls without an output buffer have been seen. */
+        static uint8_t out[0x400] __attribute__((aligned(16)));
+        static int reported;
+        uint32_t arglen = word(buf, 0x810), ee_buf = word(buf, 0x814), buflen = word(buf, 0x818);
+        if (arglen > 0x400) arglen = 0x400;
+        if (buflen > sizeof(out)) buflen = sizeof(out);
+        ob_zero(out, buflen);
+        r = ob_io_devctl(path_at(buf, 0xc, 0x400), (int)word(buf, 0x80c), (uint8_t *)buf + 0x40c,
+                         arglen, buflen ? out : 0, buflen);
+        if (buflen && r >= 0) {
+            if (ee_buf && !(ee_buf & 15)) send_ee(out, ee_buf, buflen);
+            else if (!reported) {
+                reported = 1;
+                ob_puts("[openbios:iop] fileio devctl: output buffer not sent\n");
+            }
         }
         break;
     }

@@ -35,10 +35,12 @@ static struct ob_iop_device *parse(const char *path, int *unit, const char **res
     int u = 0;
     if (!path) return 0;
     while (*path == ' ' || *path == '\t') ++path;
-    while (path[n] && path[n] != ':' && !(path[n] >= '0' && path[n] <= '9')) ++n;
-    i = n;
-    while (path[i] >= '0' && path[i] <= '9') u = u * 10 + (path[i++] - '0');
-    if (path[i] != ':') return 0;
+    /* The unit is the digits right before the colon. Names can have digits
+       in them too ("dev9x:", Monster Hunter's network tool). */
+    while (path[n] && path[n] != ':') ++n;
+    if (path[n] != ':') return 0;
+    while (n && path[n - 1] >= '0' && path[n - 1] <= '9') --n;
+    for (i = n; path[i] != ':'; ++i) u = u * 10 + (path[i] - '0');
     *unit = u;
     *rest = path + i + 1;
     for (u = 0; u < DEVICES; ++u)
