@@ -142,10 +142,13 @@ static void sceSifRegisterRpc(struct server *s, int sid, rpc_func func, void *bu
 static struct server *sceSifRemoveRpc(struct server *s, struct queue *q) {
     uint32_t v = lock();
     struct server **at = &q->link;
+    int found;
     while (*at && *at != s) at = &(*at)->link;
-    if (*at) *at = s->link;
+    /* *at changes once unlinked */
+    found = *at != 0;
+    if (found) *at = s->link;
     unlock(v);
-    return *at ? s : 0;
+    return found ? s : 0;
 }
 static struct queue *sceSifRemoveRpcQueue(struct queue *q) {
     uint32_t v = lock();
