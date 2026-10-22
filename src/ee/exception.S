@@ -188,16 +188,31 @@ ob_ee_call_custom:
 
 .globl ob_ee_call_custom_regs
 ob_ee_call_custom_regs:
-    /* Guest gp, handler, frame GPR array: a0-a3 and t0-t3 load from 64-bit
-       slots. The guest runs on a 16-byte aligned stack, as above. */
-    addiu $sp, $sp, -48
-    sd $s0, 24($sp)
-    sd $gp, 32($sp)
-    sd $ra, 40($sp)
-    addu $s0, $sp, $zero
+    /* Guest gp, handler, frame GPR array. Argument and saved registers come
+       from the caller's frame: kernel patches may jump straight back into
+       code that was interrupted (Over the Hedge's alarm callbacks return
+       through syscall 8 that way) and that code expects its s registers. */
+    addiu $sp, $sp, -96
+    sd $s0, 0($sp)
+    sd $s1, 8($sp)
+    sd $s2, 16($sp)
+    sd $s3, 24($sp)
+    sd $s4, 32($sp)
+    sd $s5, 40($sp)
+    sd $s6, 48($sp)
+    sd $s7, 56($sp)
+    sd $fp, 64($sp)
+    sd $gp, 72($sp)
+    sd $ra, 80($sp)
     addu $gp, $a0, $zero
     addu $t9, $a1, $zero
     addu $v1, $a2, $zero
+    /* 16-byte aligned guest stack; the old sp is kept just above its
+       argument area. */
+    addiu $t8, $zero, -16
+    and $t8, $sp, $t8
+    sw $sp, -8($t8)
+    addiu $t8, $t8, -48
     ld $a0, 4*16($v1)
     ld $a1, 5*16($v1)
     ld $a2, 6*16($v1)
@@ -206,16 +221,31 @@ ob_ee_call_custom_regs:
     ld $t1, 9*16($v1)
     ld $t2, 10*16($v1)
     ld $t3, 11*16($v1)
-    addiu $t8, $zero, -16
-    and $sp, $sp, $t8
+    ld $s0, 16*16($v1)
+    ld $s1, 17*16($v1)
+    ld $s2, 18*16($v1)
+    ld $s3, 19*16($v1)
+    ld $s4, 20*16($v1)
+    ld $s5, 21*16($v1)
+    ld $s6, 22*16($v1)
+    ld $s7, 23*16($v1)
+    ld $fp, 30*16($v1)
     jalr $t9
-    addiu $sp, $sp, -32
-    addu $sp, $s0, $zero
-    ld $s0, 24($sp)
-    ld $gp, 32($sp)
-    ld $ra, 40($sp)
+    addu $sp, $t8, $zero
+    lw $sp, 40($sp)
+    ld $s0, 0($sp)
+    ld $s1, 8($sp)
+    ld $s2, 16($sp)
+    ld $s3, 24($sp)
+    ld $s4, 32($sp)
+    ld $s5, 40($sp)
+    ld $s6, 48($sp)
+    ld $s7, 56($sp)
+    ld $fp, 64($sp)
+    ld $gp, 72($sp)
+    ld $ra, 80($sp)
     jr $ra
-    addiu $sp, $sp, 48
+    addiu $sp, $sp, 96
 
 .globl ob_ee_call_custom_stack
 ob_ee_call_custom_stack:
