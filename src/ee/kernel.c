@@ -180,9 +180,12 @@ static void vif_init(void) {
 
 /* ExecPS2: forget threads, semaphores, handlers and alarms, then continue the
    caller as a fresh root thread at `entry`. Installed syscall patches persist. */
+static int32_t set_gs_crt(uint32_t interlace, uint32_t mode, uint32_t ffmd);
 static void exec_program(struct ob_ee_frame *f, uint32_t entry, uint32_t gp) {
     uint32_t status = f->status;
     reset_threads();
+    /* Retail resets the video mode here, Chulip relies on it. */
+    set_gs_crt(1, 2, 1);
     ob_zero(intc_handlers, sizeof(intc_handlers));
     ob_zero(intc_heads, sizeof(intc_heads));
     ob_zero(dmac_handlers, sizeof(dmac_handlers));
