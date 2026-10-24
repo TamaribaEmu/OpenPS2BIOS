@@ -376,6 +376,14 @@ static int ee_read_sink(void *ctx, const uint8_t *data, uint32_t first, uint32_t
         uint8_t *src = (uint8_t *)data + (lo - chunk_start); /* our own read buffer */
         uint32_t bytes = hi - lo, keep = (r->paddr + hi) & 15, i;
         static int reported;
+        /* IOP DMA sources must be word aligned. With an EE buffer that is not
+           (The Simpsons Road Rage), the first piece's middle starts mid-word:
+           slide it down over the head bytes, which are already copied. */
+        if ((uintptr_t)src & 3) {
+            uint8_t *to = (uint8_t *)((uintptr_t)src & ~(uintptr_t)3);
+            for (i = 0; i < bytes; ++i) to[i] = src[i];
+            src = to;
+        }
         if (r->carry_n) {
             for (i = bytes; i-- > 0;) src[i + r->carry_n] = src[i];
             ob_copy(src, r->carry, r->carry_n);
