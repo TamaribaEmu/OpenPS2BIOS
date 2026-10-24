@@ -166,8 +166,20 @@ static struct server *sceSifGetNextRequest(struct queue *q) {
     unlock(v);
     return s;
 }
-static void sceSifExecRequest(struct server *s) {
+static void exec_reply(struct server *s, void *result) {
     struct ob_rpc_request r;
+    ob_zero(&r, sizeof(r));
+    r.command = OB_SIF_CMD_RPC_CALL;
+    r.rec_id = (uint32_t)s->rid;
+    r.pkt_addr = s->pkt_addr;
+    r.client = s->client;
+    r.recvbuf = s->recvbuf;
+    r.recv_size = (uint32_t)s->rsize;
+    r.rmode = (uint32_t)s->rmode;
+    ob_iop_rpc_reply(&r, (uint32_t)(uintptr_t)s, 0, 0, (uint32_t)(uintptr_t)result,
+                     result && s->rsize > 0 ? (uint32_t)s->rsize : 0);
+}
+static void sceSifExecRequest(struct server *s) {
     uint32_t keep[32] __attribute__((aligned(16)));
     void *result = s->func(s->rpc_number, s->buf, s->size);
     /* Some servers return a buffer from their own (now dead) stack frame,
@@ -181,16 +193,7 @@ static void sceSifExecRequest(struct server *s) {
         for (i = 0; i < ((uint32_t)s->rsize + 3) / 4; ++i) to[i] = from[i];
         result = keep;
     }
-    ob_zero(&r, sizeof(r));
-    r.command = OB_SIF_CMD_RPC_CALL;
-    r.rec_id = (uint32_t)s->rid;
-    r.pkt_addr = s->pkt_addr;
-    r.client = s->client;
-    r.recvbuf = s->recvbuf;
-    r.recv_size = (uint32_t)s->rsize;
-    r.rmode = (uint32_t)s->rmode;
-    ob_iop_rpc_reply(&r, (uint32_t)(uintptr_t)s, 0, 0, (uint32_t)(uintptr_t)result,
-                     result && s->rsize > 0 ? (uint32_t)s->rsize : 0);
+    exec_reply(s, result);
 }
 static void sceSifRpcLoop(struct queue *q) {
     for (;;) {
@@ -208,11 +211,34 @@ static struct builtin_server {
     int sid;
     rpc_func func;
     void *buf;
+    struct server *current; /* request being served, until replied */
 } builtin_servers[BUILTIN_SERVERS];
 static void builtin_server_thread(void *arg) {
     struct builtin_server *b = arg;
     b->q.thread_id = ob_kernel_current_thread();
-    sceSifRpcLoop(&b->q);
+    for (;;) {
+        struct server *s = sceSifGetNextRequest(&b->q);
+        void *result;
+        if (!s) { ob_kernel_sleep(); continue; }
+        b->current = s;
+        result = s->func(s->rpc_number, s->buf, s->size);
+        if (b->current) exec_reply(s, result);
+        b->current = 0;
+    }
+}
+int ob_iop_rpc_reply_early(void *result) {
+    int self = ob_kernel_current_thread();
+    unsigned i;
+    for (i = 0; i < BUILTIN_SERVERS; ++i) {
+        struct builtin_server *b = &builtin_servers[i];
+        if (b->func && b->current && b->q.thread_id == self) {
+            struct server *s = b->current;
+            b->current = 0;
+            exec_reply(s, result);
+            return 0;
+        }
+    }
+    return -1;
 }
 int ob_iop_rpc_server_start(int sid, void *(*func)(int fno, void *buf, int size), void *buf,
                             int priority, uint32_t stack_size) {

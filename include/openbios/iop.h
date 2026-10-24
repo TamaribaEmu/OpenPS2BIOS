@@ -108,6 +108,10 @@ void ob_iop_cd_servers_init(void);
 int ob_iop_rpc_server_join(int sid, void *(*func)(int fno, void *buf, int size), void *buf, int with);
 int ob_iop_rpc_server_start(int sid, void *(*func)(int fno, void *buf, int size), void *buf,
                             int priority, uint32_t stack_size);
+/* From a server started with ob_iop_rpc_server_start: send the reply to the
+   request being served now, before func returns (its return value is then
+   ignored). The EE may send the next request into buf right away. */
+int ob_iop_rpc_reply_early(void *result);
 /* Priority of the built-in service thread (thread 1), which receives SIF
    commands and runs the built-in RPC servers. Commands are normally handled
    in interrupt context, so module threads must not starve it. */

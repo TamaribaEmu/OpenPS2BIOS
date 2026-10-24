@@ -190,14 +190,26 @@ static void *sdk_request(int fno, void *buf, int size) {
 /* ---- completion-record layout ---- */
 static void *record_request(int fno, void *buf) {
     uint32_t extra = 0; /* bytes of extras after the 5 header words */
+    uint32_t head[3] = {word(buf, 0), word(buf, 4), word(buf, 8)};
     int r = -OB_IO_EINVAL;
+    if (fno == FIO_READ) {
+        /* Acknowledge before reading, like the real fileio: the EE caller
+           only waits for the reply and gets the result through the
+           completion record. Enter the Matrix's movie player calls this from
+           its decoding thread with 1 MiB reads, and stuttered while a reply
+           waited for the whole read. The next request may land in buf once
+           the reply is out, so take its words first. */
+        int fd = (int)word(buf, 0xc), size = (int)word(buf, 0x14);
+        uint32_t ptr = word(buf, 0x10);
+        reply[0] = 1;
+        ob_iop_rpc_reply_early(reply);
+        r = fio_read(fd, ptr, size, &record[5]);
+        extra = (4 + 32) * 4;
+        goto done;
+    }
     switch (fno) {
     case FIO_OPEN: r = ob_io_open(path_at(buf, 0x14, 0x400), (int)word(buf, 0xc)); break;
     case FIO_CLOSE: r = ob_io_close((int)word(buf, 0xc)); break;
-    case FIO_READ:
-        r = fio_read((int)word(buf, 0xc), word(buf, 0x10), (int)word(buf, 0x14), &record[5]);
-        extra = (4 + 32) * 4;
-        break;
     case FIO_WRITE:
         r = fio_write((int)word(buf, 0xc), word(buf, 0x10), word(buf, 0x14), word(buf, 0x18),
                       (const uint8_t *)buf + 0x1c);
@@ -262,10 +274,11 @@ static void *record_request(int fno, void *buf) {
     if (fno == FIO_READ) { ob_puts(" n="); ob_puthex(word(buf, 0x14)); }
     ob_puts("\n");
 #endif
-    record[0] = word(buf, 0);     /* EE semaphore */
+done:
+    record[0] = head[0];          /* EE semaphore */
     record[1] = (uint32_t)fno;
-    record[2] = word(buf, 4);     /* EE result address */
-    record[3] = word(buf, 8);     /* result size */
+    record[2] = head[1];          /* EE result address */
+    record[3] = head[2];          /* result size */
     record[4] = (uint32_t)r;
     if (record[3] > 4) record[3] = 4;
     cmd_packet[3] = 0;            /* record slot 0: the first area GET_VERSION named */
