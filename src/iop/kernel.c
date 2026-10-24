@@ -401,9 +401,10 @@ static int DelayThread(uint32_t usec) {
     return r;
 }
 typedef struct { uint32_t lo, hi; } iop_sys_clock_t;
-static void GetSystemTime(iop_sys_clock_t *c) {
+static int GetSystemTime(iop_sys_clock_t *c) {
     uint64_t t = ob_iop_system_time();
     c->lo = (uint32_t)t; c->hi = (uint32_t)(t >> 32);
+    return 0; /* callers check this */
 }
 static uint32_t GetSystemTimeLow(void) { return (uint32_t)ob_iop_system_time(); }
 static void USec2SysClock(uint32_t usec, iop_sys_clock_t *c) {
