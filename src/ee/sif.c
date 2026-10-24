@@ -74,6 +74,15 @@ static void dma_update(void) {
         dma_mask_owned = 0;
     }
 }
+/* DMA sources are physical main RAM, kernel area included: games send RPCs
+   with a NULL buffer and a nonzero size (Lemony Snicket's memory card saves)
+   and the hardware just copies whatever is at address 0. */
+static uint32_t dma_source(uint32_t src, uint32_t bytes) {
+    if ((src >= 0x20000000u && src < 0x22000000u) ||
+        (src >= 0x30000000u && src < 0x32000000u)) src &= 0x01ffffffu;
+    if (src >= 0x80000000u && src < 0xc0000000u) src &= 0x1fffffffu;
+    return ob_range(src, bytes, 0x02000000u) ? src : 0xffffffffu;
+}
 void ob_ee_sif_dma_irq(void) { dma_update(); }
 void ob_ee_sif_dma_mask_changed(void) { dma_mask_owned = 0; }
 
@@ -95,9 +104,8 @@ uint32_t ob_ee_sif_set_dma(uint32_t descriptors, int32_t count) {
         bytes = x[i].size > 0 ? ((uint32_t)x[i].size + 15) & ~15u : 16;
         /* The DMAC ignores the low four MADR bits. Scratchpad sources would
            need the SPR flag and are not supported. */
-        src &= ~15u;
-        if ((src >> 28) == 7 || !ob_ee_user_pointer(src, bytes)) goto rejected;
-        x[i].src = (uint32_t)(uintptr_t)ob_ee_user_pointer(src, bytes) & 0x1fffffffu;
+        x[i].src = dma_source(src & ~15u, bytes);
+        if (x[i].src == 0xffffffffu) goto rejected;
     }
     result = ob_sifdma_check(x, (uint32_t)count);
     if (result) goto rejected;
