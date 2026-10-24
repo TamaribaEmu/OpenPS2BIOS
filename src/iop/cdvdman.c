@@ -435,6 +435,42 @@ static int sceCdRE(uint32_t lba, uint32_t count, void *buffer, const struct read
 }
 /* The stream API is served by the stream driver's "cdrom_stm0:" device. */
 struct stm_request { uint32_t arg1, arg2; void *buffer; uint32_t cmd; struct read_mode mode; uint32_t error; };
+/* Without a stream driver (on a console it is CDVDSTM, from ROM), the stream
+   is served here like the EE stream RPC: sectors are read on demand at the
+   stream position, so every read finds them "buffered" and STAT reports a
+   full buffer. Gauntlet Dark Legacy's sound driver streams this way. */
+static struct { int ready, active; uint32_t lba, buffer_sectors; } stm;
+static int stm_read(uint32_t sectors, uint8_t *buffer, uint32_t *error) {
+    uint32_t done = 0;
+    int r = 0;
+    if (!stm.active || !sectors) { if (error) *error = stm.active ? ERR_NONE : ERR_READ; return 0; }
+    if (!((uintptr_t)buffer & 3)) r = ob_iop_cd_read_sectors(stm.lba, sectors, buffer);
+    else {
+        if (!bounce && !(bounce = ob_sysmem_alloc(OB_ALLOC_LAST, 2 * BOUNCE_SECTORS * 2048u, 0))) r = -1;
+        while (!r && done < sectors) {
+            uint32_t n = sectors - done < BOUNCE_SECTORS ? sectors - done : BOUNCE_SECTORS;
+            r = ob_iop_cd_read_sectors(stm.lba + done, n, bounce);
+            if (!r) ob_copy(buffer + done * 2048u, bounce, n * 2048u);
+            done += n;
+        }
+    }
+    if (error) *error = r ? ERR_READ : ERR_NONE;
+    if (r) return 0;
+    stm.lba += sectors;
+    return (int)sectors;
+}
+static int stm_native(uint32_t cmd, uint32_t arg1, uint32_t arg2, void *buffer, int code, uint32_t *error) {
+    if (code == 0x4394) return stm_read(arg2, buffer, error);
+    switch (cmd) {
+    case 5: stm.ready = 1; stm.active = 0; stm.buffer_sectors = arg1; return 1; /* INIT */
+    case 1: if (!stm.ready) return 0; stm.active = 1; stm.lba = arg1; return 1;  /* START */
+    case 4: case 9: stm.lba = arg1; return 1;                                    /* SEEK, SEEKF */
+    case 3: stm.active = 0; return 1;                                            /* STOP */
+    case 6: return stm.active ? (int)stm.buffer_sectors : 0;                     /* STAT */
+    case 7: case 8: return 1;                                                    /* PAUSE, RESUME */
+    default: return 0;
+    }
+}
 static int stm_call(uint32_t cmd, uint32_t arg1, uint32_t arg2, void *buffer, const struct read_mode *mode,
                     int code, uint32_t *error) {
     struct stm_request q;
@@ -443,7 +479,8 @@ static int stm_call(uint32_t cmd, uint32_t arg1, uint32_t arg2, void *buffer, co
     ob_zero(&q, sizeof(q));
     q.cmd = cmd; q.arg1 = arg1; q.arg2 = arg2; q.buffer = buffer;
     if (mode) q.mode = *mode;
-    if (ob_io_devctl("cdrom_stm0:", code, &q, sizeof(q), &out, 4) < 0) out = 0;
+    if (ob_io_devctl("cdrom_stm0:", code, &q, sizeof(q), &out, 4) < 0)
+        return stm_native(cmd, arg1, arg2, buffer, code, error);
     if (error) *error = q.error;
     return out;
 }

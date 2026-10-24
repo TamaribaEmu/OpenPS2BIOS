@@ -138,11 +138,17 @@ static void stat_x(const struct ob_io_stat *s, uint32_t *x) {
 }
 
 /* ---- ps2sdk layout ---- */
-static void *sdk_request(int fno, void *buf) {
+static void *sdk_request(int fno, void *buf, int size) {
     static uint32_t rem[4 + 32] __attribute__((aligned(16)));
     int r = -OB_IO_EINVAL;
     switch (fno) {
-    case FIO_OPEN: r = ob_io_open(path_at(buf, 4, 256), (int)word(buf, 0)); break;
+    case FIO_OPEN:
+        /* {mode, name[256]} is always 260 bytes. Older SCE libraries
+           (Gauntlet Dark Legacy) send {mode, arg, name} trimmed to the name,
+           9 + strlen(name) bytes. */
+        if (size == 4 + 256 || size < 9) r = ob_io_open(path_at(buf, 4, 256), (int)word(buf, 0));
+        else r = ob_io_open(path_at(buf, 8, 0x400), (int)(word(buf, 0) & 0x0fffffffu));
+        break;
     case FIO_CLOSE: r = ob_io_close((int)word(buf, 0)); break;
     case FIO_READ:
         r = fio_read((int)word(buf, 0), word(buf, 4), (int)word(buf, 8), rem);
@@ -270,7 +276,6 @@ static void *record_request(int fno, void *buf) {
 }
 
 static void *fileio_server(int fno, void *buf, int size) {
-    (void)size;
     if (fno == FIO_VERSION) {
         /* {completion slot 0, slot 1} -> {protocol version, remainder mode 2}. */
         completion_area = word(buf, 0);
@@ -278,7 +283,7 @@ static void *fileio_server(int fno, void *buf, int size) {
         reply[1] = 2;
         return reply;
     }
-    return completion_area ? record_request(fno, buf) : sdk_request(fno, buf);
+    return completion_area ? record_request(fno, buf) : sdk_request(fno, buf, size);
 }
 void ob_iop_fileio_init(void) {
     /* Allocate the transfer buffer before modules load; clients may take
