@@ -289,7 +289,7 @@ static uint32_t cd_disk_ready(uint32_t number, const uint8_t *in, uint32_t in_si
             if (type < 1 || type > 4 || (CDVD_REG(0x05) & 0xc0) == 0x40) break;
         }
         result = 2;
-    } else result = (CDVD_REG(0x05) & 0xc0) == 0x40 ? 2 : 6;
+    } else result = ob_iop_cd_disc_ready() ? 2 : 6;
     put32(out, result);
     return 4;
 }
@@ -530,7 +530,7 @@ static uint32_t cd_ncmd(uint32_t number, const uint8_t *in, uint32_t in_size,
         return 4;
     }
     case 14: /* DISKREADY */
-        put32(out, (CDVD_REG(0x05) & 0xc0) == 0x40 ? 2 : 6);
+        put32(out, ob_iop_cd_disc_ready() ? 2 : 6);
         return 4;
     default:
         break;

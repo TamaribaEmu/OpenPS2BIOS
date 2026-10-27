@@ -55,6 +55,14 @@ static void drive_acquire(void) {
 static int read_stream_locked(uint32_t lba, uint32_t count, uint8_t *const buf[2], uint32_t chunk,
                               int (*sink)(void *ctx, const uint8_t *data, uint32_t first, uint32_t n),
                               void *ctx, volatile uint32_t *detail);
+/* Disc ready for a new command. A drive that is busy with one of our own reads
+   still counts: the next read waits its turn. Secret Agent Clank checks this
+   before each music stream read, while the EE's file reads keep the drive busy,
+   and stops streaming at the first "not ready". */
+int ob_iop_cd_disc_ready(void) {
+    uint8_t status = REG8(CDVD + 5);
+    return (status & 0xc0) == 0x40 || ((status & 0x80) && drive_busy);
+}
 /* The disc type register is sampled on every kernel tick and at each use; any
    change starts a new media generation, invalidating all cached disc state. */
 static volatile uint32_t media_generation = 1;
