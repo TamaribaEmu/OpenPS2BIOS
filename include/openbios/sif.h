@@ -58,6 +58,8 @@ void ob_iop_rpc_reset(void);
 struct ob_sif0_segment { uint32_t iop_source, ee_destination, qwc, irq; };
 int ob_iop_sif0_send_chain(const struct ob_sif0_segment *segments, unsigned count);
 int ob_iop_sif_ee_buffer(uint32_t *ee_buffer);
+/* A terminated thread gives up its place in the SIF0 send queue. */
+void ob_iop_sif_thread_gone(int id);
 uint32_t ob_ee_physical(uint32_t address);
 uint32_t ob_iop_sif_sreg(unsigned index, int write, uint32_t value);
 /* Send an RPC_END for a request (see rpc.c). Thread-safe. */

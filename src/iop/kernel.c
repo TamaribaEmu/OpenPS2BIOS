@@ -4,6 +4,7 @@
    thbase/thsemap/thevent/thfpool/thvpool/thmsgbx/intrman libraries exported to IRX modules. */
 #include "openbios/iop.h"
 #include "openbios/iopk.h"
+#include "openbios/sif.h"
 #include "openbios/format.h"
 #include "openbios/platform.h"
 
@@ -303,7 +304,13 @@ void ob_iop_exit_thread(void) {
 }
 static int ExitThread(void) { ob_iop_exit_thread(); return 0; }
 static int ExitDeleteThread(void) { ob_iop_exit_thread(); return 0; } /* Stack kept. */
-static int TerminateThread(int id) { uint32_t s = lock(); int r = obk_thread_terminate(&k, id); unlock(s); return r; }
+static int TerminateThread(int id) {
+    uint32_t s = lock();
+    int r = obk_thread_terminate(&k, id);
+    if (!r) ob_iop_sif_thread_gone(id);
+    unlock(s);
+    return r;
+}
 static int ChangeThreadPriority(int id, int priority) {
     uint32_t s = lock();
     int r = obk_thread_priority(&k, id, priority);
@@ -313,7 +320,11 @@ static int ChangeThreadPriority(int id, int priority) {
 }
 static int iChangeThreadPriority(int id, int priority) { return obk_thread_priority(&k, id, priority); }
 static int iRotateThreadReadyQueue(int priority) { return obk_thread_rotate(&k, priority); }
-static int iTerminateThread(int id) { return obk_thread_terminate(&k, id); }
+static int iTerminateThread(int id) {
+    int r = obk_thread_terminate(&k, id);
+    if (!r) ob_iop_sif_thread_gone(id);
+    return r;
+}
 static int RotateThreadReadyQueue(int priority) {
     uint32_t s = lock(); int r = obk_thread_rotate(&k, priority);
     if (!r) maybe_preempt();

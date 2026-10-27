@@ -608,7 +608,17 @@ void ob_iop_rpc_reply(const struct ob_rpc_request *r, uint32_t server, uint32_t 
             return;
         }
     } else seg[n - 1].ee_destination = r->pkt_addr;
-    if (ob_iop_sif0_send_chain(seg, n) != OB_OK) ob_puts("[openbios:iop] RPC_END send failed\n");
+    if ((size = ob_iop_sif0_send_chain(seg, n)) != OB_OK) {
+        unsigned k;
+        ob_puts("[openbios:iop] RPC_END send failed err="); ob_puthex((uint32_t)size);
+        ob_puts(" cmd="); ob_puthex(r->command); ob_puts(" fno="); ob_puthex(r->rpc_number);
+        ob_puts(" server="); ob_puthex(r->server); ob_puts(" rmode="); ob_puthex(r->rmode);
+        for (k = 0; k < n; ++k) {
+            ob_puts(" ["); ob_puthex(seg[k].iop_source); ob_puts(" "); ob_puthex(seg[k].ee_destination);
+            ob_puts(" "); ob_puthex(seg[k].qwc); ob_puts("]");
+        }
+        ob_puts("\n");
+    }
 #ifdef OB_TRACE_RPC
     {
         extern uint32_t ob_iop_trace_t[3];

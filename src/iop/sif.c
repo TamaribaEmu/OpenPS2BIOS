@@ -31,8 +31,18 @@ uint32_t ob_ee_physical(uint32_t a) {
    Thread senders are served in call order (tickets): a client may give two
    RPCs the same receive buffer and rely on the replies arriving in order.
    Senders in interrupt context just spin until the channel is idle. */
-static volatile int channel_owner;
+static volatile int channel_owner, owner_thread;
 static volatile uint32_t next_ticket, serving;
+static volatile int ticket_thread[16]; /* -1: that sender was terminated */
+/* Games terminate their streaming threads (Family Guy, on a movie skip), maybe
+   in the middle of a send. Drop that thread's claim on the channel and its
+   place in line, or every later sender waits for it. */
+void ob_iop_sif_thread_gone(int id) {
+    unsigned i;
+    if (channel_owner && owner_thread == id) channel_owner = 0;
+    for (i = 0; i < 16; ++i)
+        if (ticket_thread[i] == id) ticket_thread[i] = -1;
+}
 #ifdef OB_TRACE_RPC
 uint32_t ob_iop_trace_t[3];
 #endif
@@ -57,9 +67,18 @@ int ob_iop_sif0_send_chain(const struct ob_sif0_segment *seg, unsigned count) {
 #ifdef OB_TRACE_RPC
     ob_iop_trace_t[0] = (uint32_t)(ob_iop_system_time() / 36864u);
 #endif
-    if (thread) { lock = sif_lock(); ticket = next_ticket++; sif_unlock(lock); }
+    if (thread) {
+        lock = sif_lock();
+        ticket = next_ticket++;
+        ticket_thread[ticket & 15] = ob_kernel_current_thread();
+        sif_unlock(lock);
+    }
     for (waited = 0;; ++waited) {
         lock = sif_lock();
+        if (thread && serving != ticket && ticket_thread[serving & 15] == -1) {
+            ticket_thread[serving & 15] = 0;
+            ++serving;
+        }
         if (!thread ? !(REG32(0xbf801528u) & 0x01000000u)
                     : serving == ticket && !channel_owner && !(REG32(0xbf801528u) & 0x01000000u)) break;
         sif_unlock(lock);
@@ -76,7 +95,12 @@ int ob_iop_sif0_send_chain(const struct ob_sif0_segment *seg, unsigned count) {
     ob_puts("[openbios:iop] sif0 start waited="); ob_puthex(waited); ob_puts(" thread="); ob_puthex((uint32_t)thread);
     ob_puts(" dest="); ob_puthex(tags[3]); ob_puts("\n");
 #endif
-    if (thread) { channel_owner = 1; ++serving; }
+    if (thread) {
+        channel_owner = 1;
+        owner_thread = ticket_thread[ticket & 15];
+        ticket_thread[ticket & 15] = 0;
+        ++serving;
+    }
     REG32(0xbf801570u) |= 0x800; /* IOP DMA9 enable. */
     REG32(0xbf801578u) |= 1; /* Global IOP DMA enable. */
     REG32(0xbf801520u) = 0;
