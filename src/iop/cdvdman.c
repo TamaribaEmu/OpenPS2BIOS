@@ -328,6 +328,10 @@ static int sceCdReadModelID(uint32_t *model) {
     *model = id[1] | id[2] << 8 | id[3] << 16;
     return 1;
 }
+/* For the EE S-command RPC: GUID (2 words) or model ID (1 word). */
+int ob_iop_cd_read_id(int model, uint32_t *out) {
+    return model ? sceCdReadModelID(out) : sceCdReadGUID(out);
+}
 static int sceCdReadDiskID(uint8_t *id) {
     static uint8_t sector[2048];
     static const uint8_t params[7] = {0, 0, 0, 0x4b, 0, 0, 0};

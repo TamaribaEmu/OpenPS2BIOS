@@ -46,6 +46,7 @@ int ob_iop_cd_ncommand(uint8_t cmd, const uint8_t *params, unsigned count);
 int ob_iop_cd_read_toc(uint8_t *toc);
 /* Whether the disc is a dual-layer DVD and the LSN where layer 1 starts. */
 int ob_iop_cd_layer_info(int *dual, uint32_t *layer1);
+int ob_iop_cd_read_id(int model, uint32_t *out);
 int ob_ee_disc_read(void *ctx, uint32_t lba, uint8_t out[2048]);
 /* Disc type | drive status << 8, or a negative error (see the mailbox notes). */
 int ob_ee_disc_status(void);

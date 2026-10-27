@@ -241,6 +241,16 @@ static uint32_t cd_scmd(uint32_t number, const uint8_t *in, uint32_t in_size,
     case 12: put32(out, CDVD_REG(0x0a)); return 4;  /* STATUS */
     case 22: /* BREAK: reads are already done here */
         break;
+    case 0x24: /* READ GUID: {result, 8 bytes} (DNAS games check it) */
+    case 0x26: { /* READ MODEL ID: {result, 4 bytes} */
+        uint32_t id[2] = {0, 0};
+        if (out_size < 12) break;
+        result = (uint32_t)ob_iop_cd_read_id(number == 0x26, id);
+        put32(out + 4, id[0]);
+        put32(out + 8, id[1]);
+        bytes = 12;
+        break;
+    }
     case 0x27: { /* READ DVD DUAL INFO: {result, on_dual, layer 1 start} */
         int dual;
         uint32_t layer1;
