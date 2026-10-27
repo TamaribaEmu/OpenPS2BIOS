@@ -866,15 +866,16 @@ struct ob_ee_frame *ob_ee_exception(struct ob_ee_frame *f) {
     case 0x30: case -0x31: {
         struct ob_thread_status out;
         int result;
-        ptr = ob_ee_user_pointer(a1, sizeof(out));
-        if (!ptr) { set_result(f, OB_EINVAL); break; }
+        /* A NULL buffer just asks for the status (retail; MGS2 polls this way). */
+        ptr = a1 ? ob_ee_user_pointer(a1, sizeof(out)) : 0;
+        if (a1 && !ptr) { set_result(f, OB_EINVAL); break; }
         result = ob_thread_status(&scheduler, (int)a0, &out);
         if (!result) {
             /* Returns the status word; a free slot reads as all zero. */
-            ob_copy(ptr, &out, sizeof(out));
+            if (ptr) ob_copy(ptr, &out, sizeof(out));
             result = (int)out.desc.status;
         } else if ((int)a0 > 0 && (int)a0 <= OB_MAX_THREADS) {
-            ob_zero(ptr, sizeof(out));
+            if (ptr) ob_zero(ptr, sizeof(out));
             result = 0;
         }
         set_result(f, result); break;
