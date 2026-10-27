@@ -5,7 +5,7 @@
 #include "openbios/platform.h"
 
 #define MAX_LIBRARIES 64
-#define MAX_MODULES 32
+#define MAX_MODULES 64
 #define MAX_ARGS 16
 
 struct library { struct ob_irx_exports *exports; uint32_t count; };
@@ -21,10 +21,31 @@ static struct module {
 } modules[MAX_MODULES];
 static int next_module_id;
 
+/* The services built into this firmware, listed as resident modules under
+   their usual module names (public PS2SDK IRX_ID names) in boot order, so
+   module lists and name searches see what a retail IOP has loaded. R&C 3's
+   IOP_stash_daemon counts the "cdvd" modules in that list. */
+static const struct { const char *name; uint16_t version; } residents[] = {
+    {"System_Memory_Manager", 0x0203}, {"Module_Manager", 0x0206},
+    {"Interrupt_Manager", 0x0101}, {"System_C_lib", 0x0101}, {"Heap_lib", 0x0101},
+    {"Multi_Thread_Manager", 0x0203}, {"Vblank_service", 0x0101},
+    {"IO/File_Manager", 0x0101}, {"Moldule_File_loader", 0x0209}, {"Stdio", 0x0101},
+    {"IOP_SIF_manager", 0x0205}, {"IOP_SIF_rpc_interface", 0x0208},
+    {"cdvd_driver", 0x0226}, {"cdvd_ee_driver", 0x0226}, {"LoadModuleByEE", 0x0202},
+    {"FILEIO_service", 0x0101}, {"Timer_Manager", 0x0202}, {"dmacman", 0x0101},
+};
 void ob_loadcore_init(void) {
+    unsigned i, n;
     ob_zero(libraries, sizeof(libraries));
     ob_zero(modules, sizeof(modules));
     next_module_id = 1;
+    for (i = 0; i < sizeof(residents) / sizeof(residents[0]); ++i) {
+        struct module *m = &modules[i];
+        for (n = 0; residents[i].name[n] && n < sizeof(m->name) - 1; ++n) m->name[n] = residents[i].name[n];
+        m->version = residents[i].version;
+        m->id = next_module_id++;
+        m->started = 1; /* resident: can't be stopped or unloaded */
+    }
 }
 static int same_name(const char *a, const char *b) {
     unsigned i;
@@ -113,21 +134,41 @@ static struct module *find_module(int id) {
     for (i = 0; i < MAX_MODULES; ++i) if (id && modules[i].id == id) return &modules[i];
     return 0;
 }
+/* Retail starts each module on a new loader thread, whose unused stack still
+   holds CreateThread's 0xff fill. Some start routines read stack they never
+   wrote (IOP_stash_daemon), so give them the same. */
+static void fill_free_stack(void) {
+    uint32_t sp, base = ob_kernel_stack_base();
+    __asm__ volatile ("move %0, $sp" : "=r"(sp));
+    if (base && base + 64 < sp - 64) {
+        volatile uint32_t *w = (volatile uint32_t *)(uintptr_t)((base + 3) & ~3u);
+        while ((uint32_t)(uintptr_t)w < sp - 64) *w++ = 0xffffffffu;
+    }
+}
 /* Run a loaded module's entry point with argv = {path, args...}. A module
-   that does not stay resident is unloaded; returns its ID either way. */
+   that does not stay resident is unloaded; returns its ID either way.
+   Like retail, the path and the args share one stack buffer, so argv[1]
+   follows the path directly. Some modules read their binary args at a
+   fixed offset from argv[1] (R&C 3's IOP_stash_daemon). Modules start
+   other modules from their entry point, so the buffer can't be static. */
 static int start_module(struct module *m, const char *path, const char *args, uint32_t args_len,
                         int *modres) {
-    static char arg_copy[256];
-    char *argv[MAX_ARGS + 1];
+    char *strings, *argv[MAX_ARGS + 1];
     int argc = 0, result, id = m->id;
-    uint32_t i;
-    if (args_len > sizeof(arg_copy) - 1) args_len = sizeof(arg_copy) - 1;
-    if (args_len) ob_copy(arg_copy, args, args_len);
-    arg_copy[args_len] = 0;
-    argv[argc++] = (char *)path;
-    for (i = 0; i < args_len && argc < MAX_ARGS; ) {
-        argv[argc++] = arg_copy + i;
-        while (i < args_len && arg_copy[i]) ++i;
+    uint32_t i, path_len = 0, end;
+    while (path[path_len] && path_len < 255) ++path_len;
+    if (args_len > 255) args_len = 255;
+    strings = __builtin_alloca((path_len + args_len + 2 + 7) & ~7u);
+    ob_copy(strings, path, path_len);
+    strings[path_len] = 0;
+    i = path_len + 1;
+    if (args_len) ob_copy(strings + i, args, args_len);
+    end = i + args_len;
+    strings[end] = 0;
+    argv[argc++] = strings;
+    while (i < end && argc < MAX_ARGS) {
+        argv[argc++] = strings + i;
+        while (i < end && strings[i]) ++i;
         ++i;
     }
     argv[argc] = 0;
@@ -135,6 +176,7 @@ static int start_module(struct module *m, const char *path, const char *args, ui
     {
         int service = ob_kernel_current_thread() == 1;
         int old = service ? ob_kernel_set_priority(OB_IOP_MODULE_START_PRIORITY) : 0;
+        fill_free_stack();
         result = ob_iop_call_module(m->entry, m->gp, argc, argv);
         if (service) ob_kernel_set_priority(old);
     }

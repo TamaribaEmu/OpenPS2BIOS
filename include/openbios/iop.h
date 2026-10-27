@@ -31,9 +31,12 @@
 /* sysmem: memory available to modules and the IOP heap. */
 /* Module memory runs from the end of this firmware's image to OB_SYSMEM_END,
    except for the reserved window holding the boot stack and the buffers
-   shared with the EE (OB_SYSMEM_HOLE_START up to OB_SYSMEM_HOLE_END). */
-#define OB_SYSMEM_HOLE_START 0x00078000u
-#define OB_SYSMEM_HOLE_END 0x00089000u
+   shared with the EE (OB_SYSMEM_HOLE_START up to OB_SYSMEM_HOLE_END). The
+   window ends where free memory starts on a retail IOP after an IOPRP reboot
+   (0x4bf00), so the first large block a game allocates lands at the same
+   address. R&C 3 hard-codes that address for its IOP_stash_daemon. */
+#define OB_SYSMEM_HOLE_START 0x0003af00u
+#define OB_SYSMEM_HOLE_END 0x0004bf00u
 #define OB_SYSMEM_END 0x001fff00u
 uint32_t ob_sysmem_base(void);
 #define OB_ALLOC_FIRST 0
@@ -90,6 +93,8 @@ int ob_intr_context(void);
 int ob_kernel_wakeup(int id);
 int ob_kernel_sleep(void);
 int ob_kernel_current_thread(void);
+/* Lowest address of the calling thread's stack (0 if unknown). */
+uint32_t ob_kernel_stack_base(void);
 /* Block the calling thread for about usec when it may block (thread context,
    interrupts enabled); otherwise return immediately. Returns 1 if it blocked. */
 int ob_kernel_pause(uint32_t usec);

@@ -4,9 +4,9 @@
 #include "base.h"
 
 #define OB_SIF_CMD_MAX 112u
-#define OB_SIF_CMD_BUFFER_IOP 0xa0082000u
-#define OB_SIF_STATUS_IOP 0xa0082100u
-#define OB_SIF_STATUS_EE 0xbc082100u
+#define OB_SIF_CMD_BUFFER_IOP 0xa0044f00u
+#define OB_SIF_STATUS_IOP 0xa0045000u
+#define OB_SIF_STATUS_EE 0xbc045000u
 #define OB_SIF_STATUS_MAGIC 0x4f425346u
 struct ob_sif_cmd_state {
     uint32_t ee_buffer;
@@ -16,8 +16,8 @@ struct ob_sif_cmd_state {
 };
 #define OB_SIF_SREG_RPCINIT 0u
 /* IOP-side staging for outgoing SIF0 packets (tag at 0x91000, payload after). */
-#define OB_SIF0_TAG_IOP 0xa0081000u
-#define OB_SIF0_OUT_IOP 0xa0081040u
+#define OB_SIF0_TAG_IOP 0xa0043f00u
+#define OB_SIF0_OUT_IOP 0xa0043f40u
 #define OB_SIF0_OUT_MAX 128u
 /* Private IOP status block for the EE; not part of the SIF interface. */
 struct ob_sif_status {

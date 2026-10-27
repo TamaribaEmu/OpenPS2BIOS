@@ -9,8 +9,8 @@ _start:
     addiu $t0, $t0, %lo(1f)
     jr $t0
     nop
-1:  lui $sp, 0xa008
-    addiu $sp, $sp, -32
+1:  lui $sp, 0xa004 /* boot stack below 0x42f00, in the reserved window */
+    addiu $sp, $sp, 0x2f00 - 32
     lui $t0, %hi(__bss_start)
     addiu $t0, $t0, %lo(__bss_start)
     lui $t1, %hi(__bss_end)

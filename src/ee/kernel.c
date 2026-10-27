@@ -431,9 +431,9 @@ static struct ob_ee_frame *dispatch_interrupt(struct ob_ee_frame *f) {
             ob_puts("[openbios:trace] irq-enter pending="); ob_puthex(pending);
             ob_puts(" dmac="); ob_puthex(DMAC_STAT); ob_puts(" epc="); ob_puthex(f->epc);
             ob_puts(" 12c="); ob_puthex(entry_address(0x12c));
-            ob_puts(" iop-received="); ob_puthex(*(volatile uint32_t *)0xbc082104u);
-            ob_puts(" iop-command="); ob_puthex(*(volatile uint32_t *)0xbc082108u);
-            ob_puts(" iop-result="); ob_puthex(*(volatile uint32_t *)0xbc08210cu);
+            ob_puts(" iop-received="); ob_puthex(*(volatile uint32_t *)0xbc045004u);
+            ob_puts(" iop-command="); ob_puthex(*(volatile uint32_t *)0xbc045008u);
+            ob_puts(" iop-result="); ob_puthex(*(volatile uint32_t *)0xbc04500cu);
             ob_puts(" d5="); ob_puthex(*(volatile uint32_t *)0xb000c000u);
             ob_puts("/"); ob_puthex(*(volatile uint32_t *)0xb000c010u);
             ob_puts(" dctrl="); ob_puthex(*(volatile uint32_t *)0xb000e000u);

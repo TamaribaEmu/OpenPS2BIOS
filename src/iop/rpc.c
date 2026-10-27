@@ -9,9 +9,9 @@
 #include "openbios/disc.h"
 #include "openbios/iso9660.h"
 
-#define RPC_AREA_IOP 0xa0088800u   /* Server buffers, 1 KiB each (up to the hole end). */
+#define RPC_AREA_IOP 0xa004b700u   /* Server buffers, 1 KiB each (up to the hole end). */
 #define RPC_BUFFER_SIZE 0x400u
-#define REPLY_DATA_IOP 0xa0081100u /* Reply payload staging before RPC_END. */
+#define REPLY_DATA_IOP 0xa0044000u /* Reply payload staging before RPC_END. */
 #define REPLY_DATA_MAX 0xe00u
 
 typedef uint32_t (*rpc_fn)(uint32_t number, const uint8_t *in, uint32_t in_size,
@@ -149,14 +149,15 @@ static uint32_t load_file(uint32_t number, const uint8_t *in, uint32_t in_size,
     if (number == 6 && in_size >= 8 + 252 && out_size >= 4) {
         /* MOD_BUF_LOAD (SifExecModuleBuffer): the module image is already in
            IOP memory at the first word (an IOP heap block the EE filled); the
-           argument length is the second word and the args sit at +260. */
+           argument length is the second word and the args sit at +260. The
+           module starts with path "LBbyEE", as with retail LOADFILE. */
         uint32_t address = ob_le32(in) & 0x1fffffu, args_len = ob_le32(in + 4), block, size = 0;
         int modres = 0, id;
         if (args_len > 252) args_len = 252;
         block = ob_sysmem_block(address, &size);
         size = block ? block + size - address : (address < 0x200000u ? 0x200000u - address : 0);
         id = size ? ob_iop_load_module((const void *)(uintptr_t)(0xa0000000u | address), size,
-                                       "buffer", (const char *)in + 8 + 252, args_len, &modres)
+                                       "LBbyEE", (const char *)in + 8 + 252, args_len, &modres)
                   : KE_ILLEGAL_OBJECT;
         if (id < 0) {
             ob_puts("[openbios:iop] loadfile buffer "); ob_puthex(address); ob_puts(" failed error=");

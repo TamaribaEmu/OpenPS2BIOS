@@ -12,12 +12,12 @@
    state 3/4: SIF0 send request/completion, lba is EE physical destination,
               detail is payload quadwords (1..128), buffer holds payload. */
 #define OB_DISC_MAGIC 0x4f424344u
-#define OB_DISC_MAILBOX_IOP 0xa0080000u
-#define OB_DISC_MAILBOX_EE 0xbc080000u
-#define OB_DISC_BUFFER_IOP 0xa0088000u
-#define OB_DISC_BUFFER_EE 0xbc088000u
-#define OB_DISC_BULK_IOP 0xa0084000u
-#define OB_DISC_BULK_EE 0xbc084000u
+#define OB_DISC_MAILBOX_IOP 0xa0042f00u
+#define OB_DISC_MAILBOX_EE 0xbc042f00u
+#define OB_DISC_BUFFER_IOP 0xa004af00u
+#define OB_DISC_BUFFER_EE 0xbc04af00u
+#define OB_DISC_BULK_IOP 0xa0046f00u
+#define OB_DISC_BULK_EE 0xbc046f00u
 #define OB_DISC_BULK_SECTORS 8u
 struct ob_disc_mailbox {
     uint32_t magic, state, lba;

@@ -193,7 +193,11 @@ void ob_iop_kernel_init(void) {
     obk_init(&k);
     obk_adopt_current(&k, OB_IOP_SERVICE_PRIORITY);
     ob_iop_context = &obk_thread(&k, 1)->context;
-    id = obk_thread_create(&k, 0, 0, (uint32_t)(uintptr_t)idle, 0x00080400u, 0x400, OBK_PRIORITY_MAX, 0);
+    /* The service thread runs on the boot stack (start.S): down from 0x42f00
+       to the start of the reserved window. */
+    obk_thread(&k, 1)->stack = 0xa0000000u | OB_SYSMEM_HOLE_START;
+    obk_thread(&k, 1)->stack_size = 0x42f00u - OB_SYSMEM_HOLE_START;
+    id = obk_thread_create(&k, 0, 0, (uint32_t)(uintptr_t)idle, 0x00043300u, 0x400, OBK_PRIORITY_MAX, 0);
     idle_thread = id;
     obk_thread(&k, id)->init_priority = OBK_PRIORITY_IDLE;
     obk_thread_start(&k, id, 0, (uint32_t)(uintptr_t)ob_iop_thread_return);
@@ -798,6 +802,10 @@ int ob_kernel_pause(uint32_t usec) {
     return 1;
 }
 int ob_kernel_current_thread(void) { return k.current; }
+uint32_t ob_kernel_stack_base(void) {
+    const struct obk_thread *t = obk_thread(&k, k.current);
+    return t ? t->stack : 0;
+}
 int ob_kernel_set_priority(int priority) {
     int old = obk_thread(&k, k.current)->priority;
     ChangeThreadPriority(0, priority);

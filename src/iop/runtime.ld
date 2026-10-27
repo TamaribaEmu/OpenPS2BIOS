@@ -13,6 +13,6 @@ SECTIONS {
     .bss (NOLOAD) : { *(.bss .bss.*) *(.sbss .sbss.*) *(COMMON) }
     . = ALIGN(16);
     __bss_end = .;
-    ASSERT(. < 0x00078000, "runtime exceeds reserved low RAM")
+    ASSERT(. < 0x0003af00, "runtime exceeds reserved low RAM")
     /DISCARD/ : { *(.reginfo) *(.MIPS.abiflags) *(.pdr) *(.comment) *(.note*) }
 }
