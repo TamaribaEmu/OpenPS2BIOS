@@ -248,6 +248,38 @@ static int native_command(uint32_t cid) {
         return 0;
     }
 }
+/* EE sceSifGetOtherData: {rec_id, pkt_addr, rpc_id, client, IOP source, EE
+   destination, size} after the header. Copy the data to the EE, then answer
+   with an RPC_END naming the request (public sifrpc RDATA layout). */
+static void other_data(const uint8_t *packet) {
+    uint32_t end[12] __attribute__((aligned(16)));
+    struct ob_sif0_segment seg[2];
+    uint32_t src = ob_le32(packet + 32), dest = ob_le32(packet + 36), size = ob_le32(packet + 40);
+    unsigned n = 0, k;
+    ob_zero(end, sizeof(end));
+    end[0] = 48 | (size << 8);
+    end[1] = dest;
+    end[2] = OB_SIF_CMD_RPC_END;
+    for (k = 0; k < 4; ++k) end[4 + k] = ob_le32(packet + 16 + 4 * k);
+    end[8] = 0x8000000cu;
+    end[9] = src;
+    end[10] = dest;
+    end[11] = size;
+    if (size) {
+        seg[n].iop_source = src & 0x1fffffu;
+        seg[n].ee_destination = dest;
+        seg[n].qwc = (size + 15) / 16;
+        seg[n++].irq = 0;
+    }
+    seg[n].iop_source = (uint32_t)(uintptr_t)end;
+    seg[n].qwc = 3;
+    seg[n].irq = 1;
+    if (ob_iop_sif_ee_buffer(&seg[n++].ee_destination)) return;
+    if (ob_iop_sif0_send_chain(seg, n) != OB_OK) {
+        ob_puts("[openbios:iop] RDATA send failed src="); ob_puthex(src); ob_puts(" dest=");
+        ob_puthex(dest); ob_puts(" size="); ob_puthex(size); ob_puts("\n");
+    }
+}
 int ob_iop_sif_poll(void) {
     struct ob_sif_status *status = (void *)OB_SIF_STATUS_IOP;
     uint8_t packet[128];
@@ -276,6 +308,14 @@ int ob_iop_sif_poll(void) {
             ++status->received;
             return 1;
         }
+    }
+    if (bytes >= 44 && ob_le32(packet + 8) == 0x8000000cu) {
+        other_data(packet);
+        status->last_command = 0x8000000cu;
+        status->result = OB_OK;
+        status->received_bytes = bytes;
+        ++status->received;
+        return 1;
     }
     if (bytes >= 48 && ob_le32(packet + 8) == OB_SIF_CMD_RPC_END) {
         uint32_t words[12];
