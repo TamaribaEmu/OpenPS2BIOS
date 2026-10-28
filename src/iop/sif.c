@@ -30,18 +30,26 @@ uint32_t ob_ee_physical(uint32_t a) {
    Tags live on the caller's stack, so concurrent senders never share them.
    Thread senders are served in call order (tickets): a client may give two
    RPCs the same receive buffer and rely on the replies arriving in order.
-   Senders in interrupt context just spin until the channel is idle. */
-static volatile int channel_owner, owner_thread;
+   Senders in interrupt context just spin until the channel is idle.
+   The channel is free as soon as DMA9 is idle: a sender claims its turn and
+   starts the transfer under one lock. */
 static volatile uint32_t next_ticket, serving;
 static volatile int ticket_thread[16]; /* -1: that sender was terminated */
 /* Games terminate their streaming threads (Family Guy, on a movie skip), maybe
-   in the middle of a send. Drop that thread's claim on the channel and its
-   place in line, or every later sender waits for it. */
+   in the middle of a send. Drop that thread's place in line, or every later
+   sender waits for it. */
 void ob_iop_sif_thread_gone(int id) {
     unsigned i;
-    if (channel_owner && owner_thread == id) channel_owner = 0;
     for (i = 0; i < 16; ++i)
         if (ticket_thread[i] == id) ticket_thread[i] = -1;
+}
+/* DMA9 finished (interrupt): senders waiting in line retry now instead of at
+   the next 1 ms tick. Sonic Heroes' pad/card replies queued behind its sound
+   stream and took 3-4 ms each, so its save select froze on load. */
+void ob_iop_sif0_done(void) {
+    unsigned i;
+    for (i = 0; i < 16; ++i)
+        if (ticket_thread[i] > 0) ob_kernel_end_delay(ticket_thread[i]);
 }
 #ifdef OB_TRACE_RPC
 uint32_t ob_iop_trace_t[3];
@@ -53,6 +61,7 @@ static int interrupts_enabled(void) {
 int ob_iop_sif0_send_chain(const struct ob_sif0_segment *seg, unsigned count) {
     uint32_t tags[4 * 4 + 4] __attribute__((aligned(16)));
     uint32_t lock, i, waited, ticket = 0;
+    uint64_t since = 0;
     int thread = interrupts_enabled();
     if (!seg || !count || count > 4) return OB_EINVAL;
     for (i = 0; i < count; ++i) {
@@ -79,13 +88,17 @@ int ob_iop_sif0_send_chain(const struct ob_sif0_segment *seg, unsigned count) {
             ticket_thread[serving & 15] = 0;
             ++serving;
         }
-        if (!thread ? !(REG32(0xbf801528u) & 0x01000000u)
-                    : serving == ticket && !channel_owner && !(REG32(0xbf801528u) & 0x01000000u)) break;
+        if (!(REG32(0xbf801528u) & 0x01000000u) && (!thread || serving == ticket)) break;
         sif_unlock(lock);
-        /* Yield to the owner or to senders ahead in line, which may be lower
-           priority. Only the head of the line may time out. */
+        /* Yield to senders ahead in line, which may be lower priority, until
+           DMA9's interrupt ends the pause. Only the head of the line may time
+           out (10 s). */
         if (thread && waited > 100 && ob_kernel_pause(1000)) {
-            if (waited > 10000u && serving == ticket) { ++serving; return OB_EBUSY; }
+            if (!since) since = ob_iop_system_time();
+            else if (serving == ticket && ob_iop_system_time() - since > 10u * 36864000u) {
+                ++serving;
+                return OB_EBUSY;
+            }
         } else if (waited > 200000000u && (!thread || serving == ticket)) {
             if (thread) ++serving;
             return OB_EBUSY;
@@ -96,8 +109,6 @@ int ob_iop_sif0_send_chain(const struct ob_sif0_segment *seg, unsigned count) {
     ob_puts(" dest="); ob_puthex(tags[3]); ob_puts("\n");
 #endif
     if (thread) {
-        channel_owner = 1;
-        owner_thread = ticket_thread[ticket & 15];
         ticket_thread[ticket & 15] = 0;
         ++serving;
     }
@@ -114,7 +125,6 @@ int ob_iop_sif0_send_chain(const struct ob_sif0_segment *seg, unsigned count) {
 #endif
     /* The tags are on this stack: wait until the transfer has consumed them. */
     for (i = 0; i < 400000000u && (REG32(0xbf801528u) & 0x01000000u); ++i) {}
-    if (thread) channel_owner = 0;
 #ifdef OB_TRACE_RPC
     ob_puts("[openbios:iop] sif0 end chcr="); ob_puthex(REG32(0xbf801528u)); ob_puts("\n");
     ob_iop_trace_t[2] = (uint32_t)(ob_iop_system_time() / 36864u);
@@ -226,7 +236,6 @@ static void reboot(const uint8_t *packet, uint32_t bytes) {
     /* Server threads die with the reboot, possibly mid-transfer: let a SIF0
        send finish and release the channel and drive they may hold. */
     for (i = 0; i < 20000000 && (REG32(0xbf801528u) & 0x01000000u); ++i) {}
-    channel_owner = 0;
     serving = next_ticket; /* Waiting senders died with their threads. */
     ob_iop_disc_reboot();
     ob_iop_rpc_reset();

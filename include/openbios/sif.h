@@ -60,6 +60,8 @@ int ob_iop_sif0_send_chain(const struct ob_sif0_segment *segments, unsigned coun
 int ob_iop_sif_ee_buffer(uint32_t *ee_buffer);
 /* A terminated thread gives up its place in the SIF0 send queue. */
 void ob_iop_sif_thread_gone(int id);
+/* DMA9 completion interrupt: wake senders waiting for the channel. */
+void ob_iop_sif0_done(void);
 uint32_t ob_ee_physical(uint32_t address);
 uint32_t ob_iop_sif_sreg(unsigned index, int write, uint32_t value);
 /* Send an RPC_END for a request (see rpc.c). Thread-safe. */

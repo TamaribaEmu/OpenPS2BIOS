@@ -14,6 +14,7 @@
 #define I_CTRL REG32(0xbf801078u)
 #define DICR REG32(0xbf8010f4u)
 #define DICR2 REG32(0xbf801574u)
+#define DICR2_SIF0 (1u << 18) /* DMA9 completion interrupt, see ob_iop_sif0_done */
 #define T5_COUNT REG32(0xbf8014a0u)
 #define T5_MODE REG32(0xbf8014a4u)
 #define T5_TARGET REG32(0xbf8014a8u)
@@ -94,7 +95,10 @@ static void dispatch_dma(void) {
     flags = (d2 >> 24) & (d2 >> 16) & 0x3f;
     for (ch = 0; ch < 6; ++ch) if (flags & (1u << ch)) {
         DICR2 = (DICR2 & 0x00ffffffu) | (1u << (24 + ch));
-        if (!call_handler(0x28 + (int)ch)) DICR2 = (DICR2 & 0x00ffffffu) & ~(1u << (16 + ch));
+        /* DMA9 (SIF0) stays enabled for the SIF layer even without a handler. */
+        if (ch == 2) ob_iop_sif0_done();
+        if (!call_handler(0x28 + (int)ch) && (ch != 2 || handlers[0x2a].handler))
+            DICR2 = (DICR2 & 0x00ffffffu) & ~(1u << (16 + ch));
     }
     DICR = (DICR & 0x00ffffffu) | 0x80000000u; /* Clear the master flag. */
 }
@@ -183,7 +187,7 @@ void ob_iop_kernel_reset(void) {
     drop_alarms();
     I_MASK = (1u << INTR_TIMER5) | (1u << INTR_DMA);
     DICR = (DICR & 0x00800000u);
-    DICR2 = 0;
+    DICR2 = DICR2_SIF0;
     vblank_setup();
     unlock(s);
 }
@@ -210,6 +214,7 @@ void ob_iop_kernel_init(void) {
     T5_COUNT = 0;
     I_MASK = (1u << INTR_TIMER5) | (1u << INTR_DMA);
     DICR = (DICR & 0x00ffffffu) | 0x00800000u; /* DMA master interrupt enable */
+    DICR2 = DICR2_SIF0;
     vblank_setup();
     I_CTRL = 1;
     sr_write((sr_read() & ~0xff00u) | 0x0401u); /* IM2 and IEc */
@@ -800,6 +805,11 @@ int ob_kernel_pause(uint32_t usec) {
     if (in_interrupt || !(sr_read() & 1u)) return 0;
     DelayThread(usec);
     return 1;
+}
+void ob_kernel_end_delay(int id) {
+    struct obk_thread *t = obk_thread(&k, id);
+    if (t && t->used && t->status == OBK_THS_WAIT && t->wait_type == OBK_WAIT_DELAY)
+        obk_thread_release_wait(&k, id);
 }
 int ob_kernel_current_thread(void) { return k.current; }
 uint32_t ob_kernel_stack_base(void) {

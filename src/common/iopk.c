@@ -36,6 +36,7 @@ int obk_adopt_current(struct obk_kernel *k, int priority) {
     struct obk_thread *t = &k->threads[0];
     if (t->used) return OBK_ILLEGAL_THID;
     t->used = 1;
+    if (!k->top) k->top = 1;
     t->status = OBK_THS_RUN;
     t->priority = t->init_priority = priority;
     t->order = ++k->order;
@@ -52,6 +53,7 @@ int obk_thread_create(struct obk_kernel *k, uint32_t attr, uint32_t option, uint
         struct obk_thread *t = &k->threads[i];
         ob_zero(t, sizeof(*t));
         t->used = 1;
+        if (i >= k->top) k->top = i + 1;
         t->status = OBK_THS_DORMANT;
         t->attr = attr; t->option = option; t->entry = entry;
         t->stack = stack; t->stack_size = stack_size;
@@ -121,7 +123,7 @@ int obk_thread_rotate(struct obk_kernel *k, int priority) {
     else {
         struct obk_thread *first = 0;
         unsigned i;
-        for (i = 0; i < OBK_THREADS; ++i) {
+        for (i = 0; i < k->top; ++i) {
             struct obk_thread *t = &k->threads[i];
             if (t->used && t->status == OBK_THS_READY && t->priority == priority &&
                 (!first || t->order < first->order)) first = t;
@@ -169,7 +171,7 @@ uint64_t obk_tick(struct obk_kernel *k, uint64_t now) {
     uint64_t next = UINT64_MAX;
     unsigned i;
     if (now > k->now) k->now = now;
-    for (i = 0; i < OBK_THREADS; ++i) {
+    for (i = 0; i < k->top; ++i) {
         struct obk_thread *t = &k->threads[i];
         if (!t->used || t->status != OBK_THS_WAIT || t->wait_type != OBK_WAIT_DELAY) continue;
         if (t->wake_time <= k->now) make_ready(k, t, OBK_OK);
@@ -193,7 +195,7 @@ int obk_sema_create(struct obk_kernel *k, uint32_t attr, uint32_t option, int in
 static struct obk_thread *first_waiter(struct obk_kernel *k, int type, int id, int by_priority) {
     struct obk_thread *best = 0;
     unsigned i;
-    for (i = 0; i < OBK_THREADS; ++i) {
+    for (i = 0; i < k->top; ++i) {
         struct obk_thread *t = &k->threads[i];
         if (!t->used || t->status != OBK_THS_WAIT || t->wait_type != type || t->wait_id != id) continue;
         if (!best || (by_priority && t->priority < best->priority) ||
@@ -204,7 +206,7 @@ static struct obk_thread *first_waiter(struct obk_kernel *k, int type, int id, i
 static int count_waiters(struct obk_kernel *k, int type, int id) {
     unsigned i;
     int n = 0;
-    for (i = 0; i < OBK_THREADS; ++i) {
+    for (i = 0; i < k->top; ++i) {
         struct obk_thread *t = &k->threads[i];
         if (t->used && t->status == OBK_THS_WAIT && t->wait_type == type && t->wait_id == id) ++n;
     }
@@ -277,7 +279,7 @@ int obk_event_set(struct obk_kernel *k, int id, uint32_t bits) {
     /* Wake satisfied waiters in queue order; a clearing waiter may stop the rest. */
     for (;;) {
         struct obk_thread *best = 0;
-        for (i = 0; i < OBK_THREADS; ++i) {
+        for (i = 0; i < k->top; ++i) {
             struct obk_thread *t = &k->threads[i];
             if (t->used && t->status == OBK_THS_WAIT && t->wait_type == OBK_WAIT_EVENT &&
                 t->wait_id == id && satisfied(e->bits, t->event_bits, t->event_mode) &&
@@ -698,7 +700,7 @@ int obk_pick(struct obk_kernel *k) {
     struct obk_thread *best = 0;
     int id = 0;
     unsigned i;
-    for (i = 0; i < OBK_THREADS; ++i) {
+    for (i = 0; i < k->top; ++i) {
         struct obk_thread *t = &k->threads[i];
         if (!t->used || (t->status != OBK_THS_READY && t->status != OBK_THS_RUN)) continue;
         if (!best || t->priority < best->priority ||

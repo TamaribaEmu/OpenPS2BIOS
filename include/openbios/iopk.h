@@ -110,6 +110,7 @@ struct obk_kernel {
     struct obk_vpl vpls[OBK_VPLS];
     struct obk_mbx mbxs[OBK_MBXS];
     int current;      /* Running thread ID. */
+    unsigned top;     /* Thread slots ever used; scans stop here (games use a few dozen). */
     uint32_t order;
     uint64_t now;     /* System clock in IOP cycles. */
 };

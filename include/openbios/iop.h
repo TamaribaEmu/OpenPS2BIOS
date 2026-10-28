@@ -98,6 +98,8 @@ uint32_t ob_kernel_stack_base(void);
 /* Block the calling thread for about usec when it may block (thread context,
    interrupts enabled); otherwise return immediately. Returns 1 if it blocked. */
 int ob_kernel_pause(uint32_t usec);
+/* Interrupt context: end thread id's ob_kernel_pause early, if it is in one. */
+void ob_kernel_end_delay(int id);
 /* Change the calling thread's priority; returns the previous one. */
 int ob_kernel_set_priority(int priority);
 /* Create and start a kernel-owned thread; returns its ID or an error. */
