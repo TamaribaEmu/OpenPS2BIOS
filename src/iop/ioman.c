@@ -197,6 +197,10 @@ int ob_io_add_driver(struct ob_iop_device *d) {
     devices[free_slot] = d;
     return 0;
 }
+void ob_io_share_drivers(int (*add_drv)(struct ob_iop_device *d)) {
+    unsigned i;
+    for (i = 0; i < DEVICES; ++i) if (devices[i]) add_drv(devices[i]);
+}
 int ob_io_del_driver(const char *name) {
     unsigned i, n;
     if (!name) return -1;

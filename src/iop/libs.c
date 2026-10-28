@@ -302,6 +302,7 @@ void ob_iop_libraries_init(void) {
     boot_modes_used = 0;
     loadcore.f[6] = FN(lib_register_library);
     loadcore.f[7] = FN(lib_release_library);
+    loadcore.f[11] = FN(ob_iop_query_library); /* QueryLibraryEntryTable */
     loadcore.f[27] = FN(lib_reboot_mode);
     ob_iop_register_builtin((void *)&stdio, 8);
     ob_iop_register_builtin((void *)&sysclib, 44);

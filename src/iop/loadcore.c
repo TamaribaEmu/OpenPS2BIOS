@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* Library registry and module loader for IRX modules. */
 #include "openbios/iop.h"
+#include "openbios/ioman.h"
 #include "openbios/format.h"
 #include "openbios/platform.h"
 
@@ -94,6 +95,19 @@ int ob_iop_release_library(struct ob_irx_exports *exports) {
     return KE_LIBRARY_NOTFOUND;
 }
 
+/* QueryLibraryEntryTable: the function table of the registered library named
+   by query (an export-table-shaped header), or 0. IOMANX uses it to hook the
+   older ioman's exports. */
+uint32_t *ob_iop_query_library(const struct ob_irx_exports *query) {
+    unsigned i;
+    for (i = 0; i < MAX_LIBRARIES; ++i) {
+        struct ob_irx_exports *e = libraries[i].exports;
+        if (e && same_name(e->name, query->name) && ob_irx_version_ok(query->version, e->version))
+            return e->functions;
+    }
+    return 0;
+}
+
 static uint32_t resolve(void *ctx, const char name[8], uint16_t version, uint32_t index) {
     unsigned i;
     (void)ctx;
@@ -145,6 +159,19 @@ static void fill_free_stack(void) {
         while ((uint32_t)(uintptr_t)w < sp - 64) *w++ = 0xffffffffu;
     }
 }
+/* IOMANX keeps its own device table; on Sony firmware it takes over the
+   drivers the ROM's IOMAN registered. Once a module exporting iomanx is
+   resident, hand it this firmware's drivers through its AddDrv (#20). */
+static void share_drivers(const struct module *m) {
+    unsigned i;
+    for (i = 0; i < MAX_LIBRARIES; ++i) {
+        const struct ob_irx_exports *e = libraries[i].exports;
+        uint32_t at = (uint32_t)(uintptr_t)e;
+        if (e && at >= m->base && at < m->base + m->size && same_name(e->name, "iomanx") &&
+            e->functions[20])
+            ob_io_share_drivers((int (*)(struct ob_iop_device *))(uintptr_t)e->functions[20]);
+    }
+}
 /* Run a loaded module's entry point with argv = {path, args...}. A module
    that does not stay resident is unloaded; returns its ID either way.
    Like retail, the path and the args share one stack buffer, so argv[1]
@@ -183,6 +210,7 @@ static int start_module(struct module *m, const char *path, const char *args, ui
     if (modres) *modres = result;
     m->removable = (result & 3) == OB_MODULE_REMOVABLE_END;
     if ((result & 3) == OB_MODULE_NO_RESIDENT_END) release_module(m);
+    else share_drivers(m);
     return id;
 }
 /* StopModule: the entry runs again with a negative argc; a

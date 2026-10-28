@@ -54,6 +54,7 @@ void ob_sysmem_dump(void);
 void ob_loadcore_init(void);
 int ob_iop_register_library(struct ob_irx_exports *exports);
 int ob_iop_release_library(struct ob_irx_exports *exports);
+uint32_t *ob_iop_query_library(const struct ob_irx_exports *query);
 /* Load and link without starting; start later with ob_iop_start_module. */
 int ob_iop_load_module_only(const void *file, uint32_t size, const char *path);
 /* As ob_iop_load_module_only, into caller-provided memory at address. */
