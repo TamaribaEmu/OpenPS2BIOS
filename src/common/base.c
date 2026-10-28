@@ -11,20 +11,26 @@ uint32_t ob_le32(const void *p) {
         ((uint32_t)s[2] << 16) | ((uint32_t)s[3] << 24));
 }
 typedef uint32_t ob_word __attribute__((may_alias));
+/* Word stores go out in ascending address order (volatile keeps the compiler
+   from reordering them). Module images are written over code that has run
+   before; recompiling emulators only drop their stale code blocks correctly
+   when it is overwritten from low to high addresses, as a console loader does.
+   Sonic Mega Collection's Sonic 3 aborted PCSX2 (dev builds) without this. */
+typedef volatile ob_word ob_vword;
 /* Forward copy (overlap allowed when dst < src), by words when both are
    word aligned: kernel paths copy whole register frames. */
 void *ob_copy(void *dst, const void *src, size_t n) {
     uint8_t *d = dst;
     const uint8_t *s = src;
     if (!(((uintptr_t)d | (uintptr_t)s) & 3)) {
-        ob_word *dw = (ob_word *)(void *)d;
+        ob_vword *dw = (ob_vword *)(void *)d;
         const ob_word *sw = (const ob_word *)(const void *)s;
         for (; n >= 16; n -= 16, dw += 4, sw += 4) {
             ob_word a = sw[0], b = sw[1], c = sw[2], e = sw[3];
             dw[0] = a; dw[1] = b; dw[2] = c; dw[3] = e;
         }
         for (; n >= 4; n -= 4) *dw++ = *sw++;
-        d = (uint8_t *)dw;
+        d = (uint8_t *)(uintptr_t)dw;
         s = (const uint8_t *)sw;
     }
     while (n--) *d++ = *s++;
@@ -33,10 +39,10 @@ void *ob_copy(void *dst, const void *src, size_t n) {
 void *ob_zero(void *dst, size_t n) {
     uint8_t *d = dst;
     if (!((uintptr_t)d & 3)) {
-        ob_word *dw = (ob_word *)(void *)d;
-        for (; n >= 16; n -= 16, dw += 4) dw[0] = dw[1] = dw[2] = dw[3] = 0;
+        ob_vword *dw = (ob_vword *)(void *)d;
+        for (; n >= 16; n -= 16, dw += 4) { dw[0] = 0; dw[1] = 0; dw[2] = 0; dw[3] = 0; }
         for (; n >= 4; n -= 4) *dw++ = 0;
-        d = (uint8_t *)dw;
+        d = (uint8_t *)(uintptr_t)dw;
     }
     while (n--) *d++ = 0;
     return dst;
