@@ -367,13 +367,20 @@ static int sceCdRM(char *name, uint32_t *status) {
     return 1;
 }
 /* sceCdTrayReq: 0 open, 1 close (S-command 0x06), 2 report whether the disc
-   changed since the previous check. */
-static int last_disk_type = -1;
+   changed since the previous check. The first check after the driver starts
+   reports a change, like a console's: Monster House's streamer only sets up
+   (and lets its module start return) once it has seen one. */
+static int last_disk_type = -1, first_check;
+int ob_iop_cd_tray_check(void) {
+    int type = CDVD_REG(0x0f), changed = first_check || type != last_disk_type;
+    first_check = 0;
+    last_disk_type = type;
+    return changed;
+}
 static int sceCdTrayReq(int mode, uint32_t *changed) {
     if (mode == 2) {
-        int type = CDVD_REG(0x0f);
-        if (changed) *changed = last_disk_type >= 0 && type != last_disk_type;
-        last_disk_type = type;
+        int c = ob_iop_cd_tray_check();
+        if (changed) *changed = (uint32_t)c;
         return 1;
     }
     if (mode == 0 || mode == 1) {
@@ -516,6 +523,7 @@ static struct { uint32_t magic, next; uint16_t version, mode; char name[8] __att
 void ob_iop_cdvdman_init(void) {
     cdvdman.f[0] = cdvdman.f[1] = cdvdman.f[2] = cdvdman.f[3] = FN(ret_zero);
     last_disk_type = CDVD_REG(0x0f);
+    first_check = 1;
     stream_flag = 0; stream_cb[0] = stream_cb[1] = 0; poff_fn = 0;
     busy = 0; abort_read = 0; worker = -1; callback = 0; bounce = 0; last_error = 0;
     cdvdman.f[4] = FN(sceCdInit);       cdvdman.f[5] = FN(sceCdStandby);

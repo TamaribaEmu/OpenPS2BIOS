@@ -236,8 +236,8 @@ static uint32_t cd_scmd(uint32_t number, const uint8_t *in, uint32_t in_size,
         break;
     case 3: put32(out, CDVD_REG(0x0f)); return 4;   /* GETDISKTYPE */
     case 4: put32(out, CDVD_REG(0x06)); return 4;   /* GETERROR */
-    case 5: /* TRAYREQ: report no tray change. */
-        if (out_size >= 8) { put32(out + 4, 0); bytes = 8; }
+    case 5: /* TRAYREQ: only the change check (2); the tray stays shut. */
+        if (out_size >= 8) { put32(out + 4, arg == 2 ? (uint32_t)ob_iop_cd_tray_check() : 0); bytes = 8; }
         break;
     case 12: put32(out, CDVD_REG(0x0a)); return 4;  /* STATUS */
     case 22: /* BREAK: reads are already done here */
