@@ -197,10 +197,6 @@ int ob_io_add_driver(struct ob_iop_device *d) {
     devices[free_slot] = d;
     return 0;
 }
-void ob_io_share_drivers(int (*add_drv)(struct ob_iop_device *d)) {
-    unsigned i;
-    for (i = 0; i < DEVICES; ++i) if (devices[i]) add_drv(devices[i]);
-}
 int ob_io_del_driver(const char *name) {
     unsigned i, n;
     if (!name) return -1;
@@ -399,6 +395,13 @@ static struct ob_iop_device_ops rom_ops = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /* not an extended driver */
 };
 static struct ob_iop_device rom_device = {"rom", OB_IO_DT_FS, 1, "ROM directory", &rom_ops};
+
+/* Only the built-in drivers: AddDrv runs init again, which a module's
+   driver may not expect. */
+void ob_io_share_drivers(int (*add_drv)(struct ob_iop_device *d)) {
+    add_drv(&rom_device);
+    add_drv(&cd_device);
+}
 
 /* ---- ioman exports ---- */
 static struct { uint32_t magic, next; uint16_t version, mode; char name[8] __attribute__((nonstring));
