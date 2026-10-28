@@ -9,6 +9,9 @@
 #define TIMER_MODE 0x083u /* H-sync clock, count enabled, no interrupts. */
 #define TIMER_IRQS 0x300u /* Compare and overflow interrupts. */
 #define TIMER_FLAGS 0xc00u
+/* Status bits for running programs: IE, the INTC and DMAC masks, EIE, and EDI
+   so EI/DI also work in user mode. */
+#define STATUS_INTERRUPTS 0x30c01u
 static struct ob_alarm_queue alarms;
 static uint16_t previous_count;
 
@@ -25,7 +28,9 @@ void ob_ee_irq_restore(uint32_t status) {
 void ob_ee_interrupts_enable(void) {
     uint32_t status;
     __asm__ volatile ("mfc0 %0, $12" : "=r"(status));
-    ob_ee_irq_restore(status | 0x10c01u); /* IE, EIE, INTC and DMAC masks. */
+    /* PS2SDK's SetT2 leaves kernel-mode programs in user mode between its DI
+       and EI, and without EDI that EI is ignored. */
+    ob_ee_irq_restore(status | STATUS_INTERRUPTS);
 }
 extern int32_t ob_ee_call_custom(uint32_t gp, uint32_t handler,
                                 uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3);

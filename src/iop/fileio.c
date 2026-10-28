@@ -143,10 +143,11 @@ static void *sdk_request(int fno, void *buf, int size) {
     int r = -OB_IO_EINVAL;
     switch (fno) {
     case FIO_OPEN:
-        /* {mode, name[256]} is always 260 bytes. Older SCE libraries
-           (Gauntlet Dark Legacy) send {mode, arg, name} trimmed to the name,
-           9 + strlen(name) bytes. */
-        if (size == 4 + 256 || size < 9) r = ob_io_open(path_at(buf, 4, 256), (int)word(buf, 0));
+        /* {mode, name[256]} is 260 bytes, or 272 in current PS2SDK, which
+           declares it aligned(16). Older SCE libraries (Gauntlet Dark Legacy)
+           send {mode, arg, name} trimmed to the name, 9 + strlen(name) bytes. */
+        if (size == 4 + 256 || size == 272 || size < 9)
+            r = ob_io_open(path_at(buf, 4, 256), (int)word(buf, 0));
         else r = ob_io_open(path_at(buf, 8, 0x400), (int)(word(buf, 0) & 0x0fffffffu));
         break;
     case FIO_CLOSE: r = ob_io_close((int)word(buf, 0)); break;
