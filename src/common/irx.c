@@ -19,7 +19,7 @@ int ob_irx_parse(const void *file, uint32_t size, struct ob_irx_info *info) {
     if (!f || !info || size < 52) return OB_EINVAL;
     ob_zero(info, sizeof(*info));
     if (ob_le32(f) != 0x464c457fu || f[4] != 1 || f[5] != 1) return OB_EFORMAT;
-    if (le16(f + 16) != OB_IRX_ET || le16(f + 18) != 8) return OB_EFORMAT;
+    if ((le16(f + 16) != OB_IRX_ET && le16(f + 16) != OB_IRX_ET2) || le16(f + 18) != 8) return OB_EFORMAT;
     info->entry = ob_le32(f + 24);
     phoff = ob_le32(f + 28);
     shoff = ob_le32(f + 32);
@@ -58,7 +58,9 @@ int ob_irx_parse(const void *file, uint32_t size, struct ob_irx_info *info) {
     for (i = 0; i < shnum; ++i) {
         const uint8_t *s = f + shoff + i * shentsize;
         uint32_t type = ob_le32(s + 4), off = ob_le32(s + 16), bytes = ob_le32(s + 20);
-        if (type == 4) return OB_ENOSYS; /* RELA is not used by IRX modules. */
+        /* RELA is not used by IRX modules, though some carry empty RELA
+           sections. */
+        if (type == 4 && bytes) return OB_ENOSYS;
         if (type != 9 || !bytes) continue;
         if (bytes % 8 || !ob_range(off, bytes, size)) return OB_EBOUNDS;
         if (info->rel_count == OB_IRX_MAX_RELS) return OB_ENOSPC;
