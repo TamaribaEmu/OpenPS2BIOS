@@ -161,30 +161,50 @@ ob_ee_thread_return:
 .globl ob_ee_call_custom
 ob_ee_call_custom:
     /* o32 parameters: guest gp, handler, a0, a1, a2, a3. Guest code uses
-       lq/sq on stack slots, so realign the 8-byte aligned kernel stack to 16. */
-    addiu $sp, $sp, -48
-    sd $s0, 24($sp)
-    sd $gp, 32($sp)
-    sd $ra, 40($sp)
-    lw $t0, 64($sp)
-    lw $t1, 68($sp)
-    addu $s0, $sp, $zero
+       lq/sq on stack slots, so realign the 8-byte aligned kernel stack to 16.
+       Keep every callee-saved register ourselves: some handlers return
+       with fp clobbered. */
+    addiu $sp, $sp, -96
+    sd $s0, 0($sp)
+    sd $s1, 8($sp)
+    sd $s2, 16($sp)
+    sd $s3, 24($sp)
+    sd $s4, 32($sp)
+    sd $s5, 40($sp)
+    sd $s6, 48($sp)
+    sd $s7, 56($sp)
+    sd $fp, 64($sp)
+    sd $gp, 72($sp)
+    sd $ra, 80($sp)
+    lw $t0, 112($sp)
+    lw $t1, 116($sp)
     addu $gp, $a0, $zero
     addu $t9, $a1, $zero
     addu $a0, $a2, $zero
     addu $a1, $a3, $zero
     addu $a2, $t0, $zero
     addu $a3, $t1, $zero
+    /* The old sp is kept just above the guest's argument area. */
     addiu $t8, $zero, -16
-    and $sp, $sp, $t8
+    and $t8, $sp, $t8
+    sw $sp, -8($t8)
     jalr $t9
-    addiu $sp, $sp, -32
-    addu $sp, $s0, $zero
-    ld $s0, 24($sp)
-    ld $gp, 32($sp)
-    ld $ra, 40($sp)
+    addiu $sp, $t8, -48
+    sll $v0, $v0, 0 /* sign-extend the 32-bit result; callers test its sign */
+    lw $sp, 40($sp)
+    ld $s0, 0($sp)
+    ld $s1, 8($sp)
+    ld $s2, 16($sp)
+    ld $s3, 24($sp)
+    ld $s4, 32($sp)
+    ld $s5, 40($sp)
+    ld $s6, 48($sp)
+    ld $s7, 56($sp)
+    ld $fp, 64($sp)
+    ld $gp, 72($sp)
+    ld $ra, 80($sp)
     jr $ra
-    addiu $sp, $sp, 48
+    addiu $sp, $sp, 96
 
 .globl ob_ee_call_custom_regs
 ob_ee_call_custom_regs:
@@ -249,32 +269,51 @@ ob_ee_call_custom_regs:
 
 .globl ob_ee_call_custom_stack
 ob_ee_call_custom_stack:
-    /* Seventh o32 argument is the guest stack top. */
-    addiu $sp, $sp, -48
-    sd $s0, 24($sp)
-    sd $gp, 32($sp)
-    sd $ra, 40($sp)
-    lw $t0, 64($sp)
-    lw $t1, 68($sp)
-    lw $t2, 72($sp)
-    addu $s0, $sp, $zero
+    /* Seventh o32 argument is the guest stack top. Saved registers as in
+       ob_ee_call_custom. */
+    addiu $sp, $sp, -96
+    sd $s0, 0($sp)
+    sd $s1, 8($sp)
+    sd $s2, 16($sp)
+    sd $s3, 24($sp)
+    sd $s4, 32($sp)
+    sd $s5, 40($sp)
+    sd $s6, 48($sp)
+    sd $s7, 56($sp)
+    sd $fp, 64($sp)
+    sd $gp, 72($sp)
+    sd $ra, 80($sp)
+    lw $t0, 112($sp)
+    lw $t1, 116($sp)
+    lw $t2, 120($sp)
     addu $gp, $a0, $zero
     addu $t9, $a1, $zero
     addu $a0, $a2, $zero
     addu $a1, $a3, $zero
     addu $a2, $t0, $zero
     addu $a3, $t1, $zero
-    /* Reserve the o32 argument home area below the caller's live frame. */
+    /* Reserve the o32 argument home area below the caller's live frame,
+       with the old sp just above it. */
     addiu $t8, $zero, -16
     and $t2, $t2, $t8
+    sw $sp, -8($t2)
     jalr $t9
-    addiu $sp, $t2, -32
-    addu $sp, $s0, $zero
-    ld $s0, 24($sp)
-    ld $gp, 32($sp)
-    ld $ra, 40($sp)
+    addiu $sp, $t2, -48
+    sll $v0, $v0, 0
+    lw $sp, 40($sp)
+    ld $s0, 0($sp)
+    ld $s1, 8($sp)
+    ld $s2, 16($sp)
+    ld $s3, 24($sp)
+    ld $s4, 32($sp)
+    ld $s5, 40($sp)
+    ld $s6, 48($sp)
+    ld $s7, 56($sp)
+    ld $fp, 64($sp)
+    ld $gp, 72($sp)
+    ld $ra, 80($sp)
     jr $ra
-    addiu $sp, $sp, 48
+    addiu $sp, $sp, 96
 
 /* ob_ee_tlb_write(index, page_mask, entry_hi, entry_lo0, entry_lo1 on the stack). */
 .globl ob_ee_tlb_write
