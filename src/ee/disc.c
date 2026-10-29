@@ -5,21 +5,18 @@
 #include "openbios/elf.h"
 #include "openbios/rom.h"
 
-/* Load an ELF from the disc ("cdrom0:\\NAME;1" or a bare ISO path). Each
+/* Load an ELF whose bytes read(ctx, offset, dest, size) returns. Each
    loadable segment is read straight into RAM, so large non-loaded sections
    such as debug data need not fit anywhere. */
-int ob_ee_disc_load(const char *path, uint32_t *entry) {
+typedef int (*elf_read)(void *ctx, uint32_t offset, void *dest, uint32_t size);
+static int load_elf(elf_read read, void *ctx, uint32_t file_size, uint32_t *entry) {
     static uint8_t head[52 + 64 * 32];
-    struct ob_iso iso;
-    struct ob_iso_file file;
     uint32_t phoff, count, i, want;
-    int result = ob_iso_mount(&iso, ob_ee_disc_read, 0, UINT32_MAX), executable = 0;
-    if (!result) result = ob_iso_find(&iso, path, &file);
-    if (result) return result;
-    ob_puts("[openbios:disc] loading ELF bytes="); ob_puthex(file.size); ob_puts("\n");
-    want = file.size < sizeof(head) ? file.size : sizeof(head);
+    int result, executable = 0;
+    ob_puts("[openbios:disc] loading ELF bytes="); ob_puthex(file_size); ob_puts("\n");
+    want = file_size < sizeof(head) ? file_size : sizeof(head);
     if (want < 52) return OB_EFORMAT;
-    result = ob_iso_read(&iso, &file, 0, head, want);
+    result = read(ctx, 0, head, want);
     if (result) return result;
     if (!ob_equal(head, "\177ELF\1\1\1", 7) || ob_le16(head + 16) != 2 || ob_le16(head + 18) != 8 ||
         ob_le16(head + 42) != 32) return OB_EFORMAT;
@@ -35,13 +32,13 @@ int ob_ee_disc_load(const char *path, uint32_t *entry) {
         if (ob_le32(ph) != 1 || (!memsz && !filesz)) continue;
         /* Scratchpad segment (MK Deadly Alliance). */
         if (addr >= 0x70000000u && ob_range(addr - 0x70000000u, memsz, 0x4000u) &&
-            ob_range(off, filesz, file.size) && filesz <= memsz) continue;
+            ob_range(off, filesz, file_size) && filesz <= memsz) continue;
         /* No RAM past 32 MB on retail. Soulcalibur II has a .text2 there. */
         if (addr >= 0x02000000u) {
             ob_puts("[openbios:disc] skipping segment above RAM at "); ob_puthex(addr); ob_puts("\n");
             continue;
         }
-        if (filesz > memsz || !ob_range(off, filesz, file.size) || addr < 0x00100000u ||
+        if (filesz > memsz || !ob_range(off, filesz, file_size) || addr < 0x00100000u ||
             !ob_range(addr, memsz, 0x02000000u)) return OB_EBOUNDS;
         if (*entry >= addr && *entry - addr < filesz) executable = 1;
     }
@@ -55,12 +52,39 @@ int ob_ee_disc_load(const char *path, uint32_t *entry) {
         if (ob_le32(ph) != 1 || (!memsz && !filesz) || (addr >= 0x02000000u && !spr)) continue;
         if (spr) dest = (uint8_t *)(uintptr_t)addr; /* mapped by the kernel TLB */
         if (filesz) {
-            result = ob_iso_read(&iso, &file, off, dest, filesz);
+            result = read(ctx, off, dest, filesz);
             if (result) return result;
         }
         ob_zero(dest + filesz, memsz - filesz);
     }
     return OB_OK;
+}
+
+struct iso_source { struct ob_iso iso; struct ob_iso_file file; };
+static int iso_read(void *ctx, uint32_t offset, void *dest, uint32_t size) {
+    struct iso_source *src = ctx;
+    return ob_iso_read(&src->iso, &src->file, offset, dest, size);
+}
+/* Load an ELF from the disc ("cdrom0:\\NAME;1" or a bare ISO path). */
+int ob_ee_disc_load(const char *path, uint32_t *entry) {
+    static struct iso_source src;
+    int result = ob_iso_mount(&src.iso, ob_ee_disc_read, 0, UINT32_MAX);
+    if (!result) result = ob_iso_find(&src.iso, path, &src.file);
+    if (result) return result;
+    return load_elf(iso_read, &src, src.file.size, entry);
+}
+
+static int file_read(void *ctx, uint32_t offset, void *dest, uint32_t size) {
+    int r = ob_ee_file_read(offset, dest, size);
+    (void)ctx;
+    return r < 0 ? r : (uint32_t)r == size ? OB_OK : OB_EFORMAT;
+}
+int ob_ee_file_load(const char *path, uint32_t *entry) {
+    int size = ob_ee_file_open(path), result;
+    if (size < 0) return size;
+    result = load_elf(file_read, 0, (uint32_t)size, entry);
+    ob_ee_file_close();
+    return result;
 }
 
 /* Load an ELF stored in the ROM directory ("OSDSYS" or "OSDSYS;1"). */

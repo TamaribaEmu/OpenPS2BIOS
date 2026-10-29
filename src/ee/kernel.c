@@ -544,6 +544,13 @@ static struct ob_ee_frame *dispatch_interrupt(struct ob_ee_frame *f) {
 #endif
     return schedule_frame(f);
 }
+/* "dev:path" on a device other than the disc (e.g. host:), which programs
+   load through the IOP's ioman; bare paths are ISO paths on the disc. */
+static int on_other_device(const char *path) {
+    unsigned n = 0;
+    while (path[n] && path[n] != ':') ++n;
+    return path[n] == ':' && !ob_equal(path, "cdrom", 5);
+}
 
 struct ob_ee_frame *ob_ee_exception(struct ob_ee_frame *f) {
     int32_t nr = (int32_t)f->gpr[3][0]; /* PS2 ABI uses v1, not MIPS Linux v0. */
@@ -722,7 +729,7 @@ struct ob_ee_frame *ob_ee_exception(struct ob_ee_frame *f) {
                 /* No such ROM program (e.g. the boot screen): boot the disc. */
                 if (ob_ee_disc_boot(&entry)) { set_result(f, OB_ENOTFOUND); break; }
             }
-        } else if (ob_ee_disc_load(path, &entry)) {
+        } else if (on_other_device(path) ? ob_ee_file_load(path, &entry) : ob_ee_disc_load(path, &entry)) {
             ob_puts("[openbios:ee] LoadExecPS2 failed\n");
             set_result(f, OB_ENOTFOUND); break;
         }
