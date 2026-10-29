@@ -396,6 +396,13 @@ static struct ob_iop_device_ops rom_ops = {
 };
 static struct ob_iop_device rom_device = {"rom", OB_IO_DT_FS, 1, "ROM directory", &rom_ops};
 
+/* Only the built-in drivers: AddDrv runs init again, which a module's
+   driver may not expect. */
+void ob_io_share_drivers(int (*add_drv)(struct ob_iop_device *d)) {
+    add_drv(&rom_device);
+    add_drv(&cd_device);
+}
+
 /* ---- ioman exports ---- */
 static struct { uint32_t magic, next; uint16_t version, mode; char name[8] __attribute__((nonstring));
                 uint32_t f[36]; } ioman = {OB_IRX_EXPORT_MAGIC, 0, 0x0104, 0, "ioman", {0}};

@@ -107,6 +107,7 @@ int ob_io_getstat(const char *name, struct ob_io_stat *stat);
 int ob_io_chstat(const char *name, struct ob_io_stat *stat, unsigned mask);
 int ob_io_format(const char *name);
 int ob_io_add_driver(struct ob_iop_device *d);
+void ob_io_share_drivers(int (*add_drv)(struct ob_iop_device *d));
 int ob_io_devctl(const char *name, int cmd, void *arg, unsigned arglen, void *buf, unsigned buflen);
 int ob_io_del_driver(const char *name);
 #endif
