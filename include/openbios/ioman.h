@@ -13,6 +13,7 @@
 #define OB_IO_SEEK_SET 0
 #define OB_IO_SEEK_CUR 1
 #define OB_IO_SEEK_END 2
+#define OB_IO_DT_CHAR 0x01
 #define OB_IO_DT_FS 0x10
 /* io_stat mode: regular file / directory, readable and executable by all. */
 #define OB_IO_S_FILE 0x0015u

@@ -396,6 +396,38 @@ static struct ob_iop_device_ops rom_ops = {
 };
 static struct ob_iop_device rom_device = {"rom", OB_IO_DT_FS, 1, "ROM directory", &rom_ops};
 
+/* tty: the console, where IOP printf also goes. Writes are logged; there is
+   no input. */
+static int tty_open(struct ob_iop_file *f, const char *name, int flags) {
+    (void)f; (void)name; (void)flags;
+    return 0;
+}
+static int tty_read(struct ob_iop_file *f, void *ptr, int size) {
+    (void)f; (void)ptr; (void)size;
+    return 0;
+}
+static int tty_write(struct ob_iop_file *f, void *ptr, int size) {
+    char text[65];
+    int done = 0;
+    (void)f;
+    while (done < size) {
+        int n = size - done > 64 ? 64 : size - done;
+        ob_copy(text, (const char *)ptr + done, (uint32_t)n);
+        text[n] = 0;
+        ob_puts(text);
+        done += n;
+    }
+    return size;
+}
+static struct ob_iop_device_ops tty_ops = {
+    OP(dev_nop), OP(dev_nop), OP(dev_unsupported), OP(tty_open), OP(dev_nop), OP(tty_read),
+    OP(tty_write), OP(dev_unsupported), OP(dev_nop), OP(dev_unsupported), OP(dev_unsupported),
+    OP(dev_unsupported), OP(dev_unsupported), OP(dev_unsupported), OP(dev_unsupported),
+    OP(dev_unsupported), OP(dev_unsupported),
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /* not an extended driver */
+};
+static struct ob_iop_device tty_device = {"tty", OB_IO_DT_CHAR, 1, "console", &tty_ops};
+
 /* Only the built-in drivers: AddDrv runs init again, which a module's
    driver may not expect. */
 void ob_io_share_drivers(int (*add_drv)(struct ob_iop_device *d)) {
@@ -408,6 +440,7 @@ static struct { uint32_t magic, next; uint16_t version, mode; char name[8] __att
                 uint32_t f[36]; } ioman = {OB_IRX_EXPORT_MAGIC, 0, 0x0104, 0, "ioman", {0}};
 #define FN(p) ((uint32_t)(uintptr_t)(p))
 void ob_iop_ioman_init(void) {
+    unsigned i;
     ob_zero(devices, sizeof(devices));
     ob_zero(files, sizeof(files));
     ob_zero(cd_handles, sizeof(cd_handles));
@@ -415,6 +448,14 @@ void ob_iop_ioman_init(void) {
     cd_bounce = 0;
     ob_io_add_driver(&rom_device);
     ob_io_add_driver(&cd_device);
+    ob_io_add_driver(&tty_device);
+    /* fds 0 and 1 are the console, so EE stdout (FILEIO writes to fd 1)
+       reaches the log. */
+    for (i = 0; i < 2; ++i) {
+        files[i].used = 1;
+        files[i].f.mode = i ? OB_IO_O_WRONLY : OB_IO_O_RDONLY;
+        files[i].f.device = &tty_device;
+    }
     ioman.f[0] = ioman.f[1] = ioman.f[2] = ioman.f[3] = FN(dev_nop);
     ioman.f[4] = FN(ob_io_open);    ioman.f[5] = FN(ob_io_close);
     ioman.f[6] = FN(ob_io_read);    ioman.f[7] = FN(ob_io_write);
