@@ -137,6 +137,12 @@ static void read_worker(void *arg) {
         notify(FUNC_READ);
     }
 }
+/* CreateThread fails in interrupt context, where some sound drivers issue
+   their reads, so sceCdInit starts the worker ahead of time. */
+static int start_worker(void) {
+    if (worker <= 0) worker = ob_kernel_spawn(read_worker, 0, 10, 0x1000); /* also runs the user callback */
+    return worker > 0;
+}
 static int sceCdRead(uint32_t lba, uint32_t count, void *buffer, const struct read_mode *mode) {
     trace("read", lba, count, (uint32_t)(uintptr_t)buffer);
     trace("read mode/busy", mode ? *(const uint32_t *)(const void *)mode : 0xffffffffu, (uint32_t)busy, 0);
@@ -146,10 +152,7 @@ static int sceCdRead(uint32_t lba, uint32_t count, void *buffer, const struct re
         bounce = ob_sysmem_alloc(OB_ALLOC_LAST, 2 * BOUNCE_SECTORS * 2048u, 0);
         if (!bounce) return 0;
     }
-    if (worker <= 0) {
-        worker = ob_kernel_spawn(read_worker, 0, 10, 0x1000); /* also runs the user callback */
-        if (worker <= 0) return 0;
-    }
+    if (!start_worker()) return 0;
     read_lba = lba;
     read_count = count;
     read_done = 0;
@@ -217,6 +220,7 @@ static int sceCdSeek(uint32_t lba) {
     return simple_command(5, p, 4, FUNC_SEEK);
 }
 static int sceCdInit(int mode) {
+    start_worker();
     if (mode == 5) { /* exit: stop reading and drop the callback */
         if (busy) abort_read = 1;
         sceCdSync(0);
