@@ -45,7 +45,10 @@ void ob_loadcore_init(void) {
         for (n = 0; residents[i].name[n] && n < sizeof(m->name) - 1; ++n) m->name[n] = residents[i].name[n];
         m->version = residents[i].version;
         m->id = next_module_id++;
-        m->started = 1; /* resident: can't be stopped or unloaded */
+        m->started = 1; /* resident: can't be stopped or unloaded... */
+        /* ...except CDVDFSV, which games unload to free IOP memory (and give
+           up if they can't). Its RPC servers stay up. */
+        m->removable = ob_equal(m->name, "cdvd_ee_driver", 15);
     }
 }
 static int same_name(const char *a, const char *b) {
@@ -234,7 +237,8 @@ int ob_iop_stop_module(int id, const char *args, uint32_t args_len, int *modres)
         ++i;
     }
     argv[argc] = 0;
-    result = ob_iop_call_module(m->entry, m->gp, -argc, argv);
+    /* Built-in residents have no entry point and always agree. */
+    result = m->entry ? ob_iop_call_module(m->entry, m->gp, -argc, argv) : OB_MODULE_NO_RESIDENT_END;
     if (modres) *modres = result;
     if ((result & 3) != OB_MODULE_NO_RESIDENT_END) return KE_CAN_NOT_STOP;
     m->started = 0;

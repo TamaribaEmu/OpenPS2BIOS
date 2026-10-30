@@ -3,9 +3,11 @@
 #define OPENBIOS_IRX_H
 #include "base.h"
 
-/* IOP relocatable module (IRX) format: ELF32 type 0xff80 with a .iopmod program
-   header (0x70000080), one load segment linked at 0 and REL relocations. */
+/* IOP relocatable module (IRX) format: ELF32 type 0xff80 (or 0xff81, from
+   newer SDKs, laid out the same) with a .iopmod program header (0x70000080),
+   one load segment linked at 0 and REL relocations. */
 #define OB_IRX_ET 0xff80u
+#define OB_IRX_ET2 0xff81u
 #define OB_IRX_PT_IOPMOD 0x70000080u
 #define OB_IRX_IMPORT_MAGIC 0x41e00000u
 #define OB_IRX_EXPORT_MAGIC 0x41c00000u
