@@ -10,8 +10,11 @@ BUILD := build
 
 CFLAGS := --target=mipsel-none-elf -mabi=32 -mno-abicalls -fno-pic -G0 \
           -ffreestanding -fno-builtin -fno-stack-protector -fno-common \
-          -msoft-float -Os -Wall -Wextra -Werror -Iinclude \
-          -DOB_VERSION='"$(VERSION)"'
+          -msoft-float -Os -ffunction-sections -fdata-sections -Wall -Wextra -Werror \
+          -Iinclude -DOB_VERSION='"$(VERSION)"'
+# Each function and object gets its own section, so the linker drops what
+# nothing references.
+LDFLAGS := -m elf32ltsmip --gc-sections
 
 COMMON := src/common/compiler.c src/common/base.c src/common/rom.c src/common/console.c
 EE_SRC := $(COMMON) src/common/elf.c src/common/sched.c src/common/alarm.c src/common/deci2.c \
@@ -50,16 +53,16 @@ $(BUILD)/reset.o: src/reset.S
 	$(CC) $(CFLAGS) -march=mips1 -c $< -o $@
 
 $(BUILD)/reset.elf: $(BUILD)/reset.o src/reset.ld
-	$(LD) -m elf32ltsmip -T src/reset.ld $< -o $@
+	$(LD) $(LDFLAGS) -T src/reset.ld $< -o $@
 
 $(BUILD)/ee.elf: $(EE_OBJ) src/runtime.ld
-	$(LD) -m elf32ltsmip -T src/runtime.ld $(EE_OBJ) -o $@
+	$(LD) $(LDFLAGS) -T src/runtime.ld $(EE_OBJ) -o $@
 
 $(BUILD)/iop.elf: $(IOP_OBJ) src/iop/runtime.ld
-	$(LD) -m elf32ltsmip -T src/iop/runtime.ld $(IOP_OBJ) -o $@
+	$(LD) $(LDFLAGS) -T src/iop/runtime.ld $(IOP_OBJ) -o $@
 
 $(BUILD)/osdsys.elf: $(OSD_OBJ) osd/osd.ld
-	$(LD) -m elf32ltsmip -T osd/osd.ld $(OSD_OBJ) -o $@
+	$(LD) $(LDFLAGS) -T osd/osd.ld $(OSD_OBJ) -o $@
 
 $(BUILD)/%.bin: $(BUILD)/%.elf
 	$(OBJCOPY) -O binary $< $@
