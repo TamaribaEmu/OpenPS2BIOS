@@ -473,6 +473,30 @@ static uint32_t cd_read_ee(const uint8_t *in, uint8_t *out) {
     put32(out, r.done);
     return 4;
 }
+/* READCHAIN: up to 64 {lbn, sectors, buffer} tags ending in -1, then the read
+   mode and the EE address that gets the running byte count after each tag.
+   A buffer with bit 0 set is IOP memory. */
+static uint32_t cd_read_chain(const uint8_t *in, uint8_t *out) {
+    uint32_t position_dest = ob_le32(in + 0x310), total = 0, i, packet[6];
+    for (i = 0; i < 64; ++i) {
+        const uint8_t *tag = in + i * 12;
+        uint32_t lbn = ob_le32(tag), sectors = ob_le32(tag + 4), buffer = ob_le32(tag + 8);
+        if (lbn == 0xffffffffu || sectors == 0xffffffffu || buffer == 0xffffffffu) break;
+        if (buffer & 1) {
+            if (ob_iop_cd_read_sectors(lbn, sectors, (void *)(uintptr_t)(buffer & 0x1ffffeu))) break;
+        } else {
+            packet[0] = lbn; packet[1] = sectors; packet[2] = buffer;
+            packet[3] = ob_le32(in + 0x30c); packet[4] = packet[5] = 0;
+            cd_read_ee((const uint8_t *)packet, out);
+            if (ob_le32(out) != sectors * 2048) break;
+        }
+        total += sectors * 2048;
+        read_position[0] = total;
+        if (position_dest) send_ee(read_position, position_dest, 16);
+    }
+    put32(out, 1);
+    return 4;
+}
 /* CD streaming (public libcdvd sceCdStream packet {lbn, sectors, buffer,
    command, mode}). Data is read on demand at the stream position with one
    drive command per request and sent straight to the EE, so every READ finds
@@ -547,6 +571,9 @@ static uint32_t cd_ncmd(uint32_t number, const uint8_t *in, uint32_t in_size,
         if (in_size < 16) break;
         put32(out, cd_stream(in));
         return 4;
+    case 15: /* READCHAIN */
+        if (in_size < 0x314) break;
+        return cd_read_chain(in, out);
     case 13: { /* READIOPMEM: read into IOP memory */
         uint32_t lbn, sectors, dest;
         int ok;
