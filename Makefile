@@ -21,7 +21,8 @@ IOP_SRC := $(COMMON) src/common/iso9660.c src/common/sifcmd.c src/common/sifrpc.
            src/common/format.c src/common/iopk.c src/iop/sysmem.c src/iop/loadcore.c src/iop/libs.c \
            src/iop/kernel.c src/iop/heaplib.c src/iop/dmacman.c src/iop/cdvdman.c src/iop/ioman.c \
            src/iop/fileio.c src/iop/modload.c src/iop/secrman.c src/iop/timrman.c src/iop/sifrpc.c \
-           src/iop/exception.S src/iop/rpc.c src/iop/sif.c src/iop/disc.c src/iop/main.c src/iop/start.S
+           src/iop/exception.S src/iop/rpc.c src/iop/sif.c src/iop/disc.c src/iop/main.c src/iop/start.S \
+           src/iop/host.S
 OSD_SRC := osd/start.S osd/osd.c src/common/base.c src/common/compiler.c src/common/console.c \
            src/common/iso9660.c src/ee/discio.c
 

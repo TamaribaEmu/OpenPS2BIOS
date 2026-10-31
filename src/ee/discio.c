@@ -22,13 +22,16 @@ static int wait_mailbox(volatile struct ob_disc_mailbox *m, int (*done)(volatile
 static int has_magic(volatile struct ob_disc_mailbox *m) { return m->magic == OB_DISC_MAGIC; }
 static int read_done(volatile struct ob_disc_mailbox *m) { return m->state == 2; }
 static int status_done(volatile struct ob_disc_mailbox *m) { return m->state == 6; }
+static int open_done(volatile struct ob_disc_mailbox *m) { return m->state == 8; }
+static int file_read_done(volatile struct ob_disc_mailbox *m) { return m->state == 10; }
+static int close_done(volatile struct ob_disc_mailbox *m) { return m->state == 12; }
 
 /* One request; returns its result (OB_EBUSY on timeout). */
 static int request(uint32_t state, uint32_t lba, uint32_t detail,
                    int (*done)(volatile struct ob_disc_mailbox *), uint32_t *out) {
     volatile struct ob_disc_mailbox *m = (void *)OB_DISC_MAILBOX_EE;
     int ok;
-    if (!wait_mailbox(m, has_magic) || (m->state != 0 && m->state != 2 && m->state != 6))
+    if (!wait_mailbox(m, has_magic) || (m->state & 1))
         return OB_EBUSY;
     m->lba = lba;
     m->detail = detail;
@@ -80,3 +83,27 @@ int ob_ee_disc_status(void) {
     int result = request(5, 0, 0, status_done, &detail);
     return result ? result : (int)(detail & 0xffffu);
 }
+
+int ob_ee_file_open(const char *path) {
+    volatile char *name = (volatile char *)OB_DISC_BUFFER_EE;
+    unsigned n = 0;
+    while (path[n] && n < 255) { name[n] = path[n]; ++n; }
+    name[n] = 0;
+    return request(7, 0, 0, open_done, 0);
+}
+/* Reads in bulk-buffer pieces; returns the bytes read or an error. */
+int ob_ee_file_read(uint32_t offset, void *out, uint32_t size) {
+    uint32_t done = 0;
+    while (done < size) {
+        uint32_t n = size - done;
+        int r;
+        if (n > OB_DISC_BULK_SECTORS * 2048u) n = OB_DISC_BULK_SECTORS * 2048u;
+        r = request(9, offset + done, n, file_read_done, 0);
+        if (r < 0) return r;
+        ob_copy((uint8_t *)out + done, (const void *)OB_DISC_BULK_EE, (uint32_t)r);
+        done += (uint32_t)r;
+        if ((uint32_t)r < n) break;
+    }
+    return (int)done;
+}
+void ob_ee_file_close(void) { request(11, 0, 0, close_done, 0); }

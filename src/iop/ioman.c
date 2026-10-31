@@ -427,12 +427,84 @@ static struct ob_iop_device_ops tty_ops = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /* not an extended driver */
 };
 static struct ob_iop_device tty_device = {"tty", OB_IO_DT_CHAR, 1, "console", &tty_ops};
+/* host: files served by the emulator through ioman's import stubs (host.S);
+   elsewhere every call fails with ENODEV. privdata holds the host's fd. */
+int ob_host_open(const char *name, int flags, int mode);
+int ob_host_close(int fd);
+int ob_host_read(int fd, void *ptr, int size);
+int ob_host_write(int fd, void *ptr, int size);
+int ob_host_lseek(int fd, int offset, int whence);
+int ob_host_remove(const char *name);
+int ob_host_mkdir(const char *name);
+int ob_host_rmdir(const char *name);
+int ob_host_dopen(const char *name);
+int ob_host_dclose(int fd);
+int ob_host_dread(int fd, struct ob_io_dirent *buf);
+int ob_host_getstat(const char *name, struct ob_io_stat *stat);
+static void host_path(char out[262], const char *rest) {
+    unsigned n = 0;
+    ob_copy(out, "host:", 5);
+    while (rest[n] && n < 256) { out[5 + n] = rest[n]; ++n; }
+    out[5 + n] = 0;
+}
+static int host_fd(struct ob_iop_file *f) { return (int)(uintptr_t)f->privdata; }
+/* Buffers by their physical address: the host side may not map KSEG aliases. */
+static void *host_buf(void *p) { return (void *)((uintptr_t)p & 0x1fffffffu); }
+static int host_open(struct ob_iop_file *f, const char *name, int flags) {
+    char path[262];
+    int fd;
+    host_path(path, name);
+    fd = ob_host_open(path, flags, 0666);
+    if (fd >= 0) f->privdata = (void *)(uintptr_t)fd;
+    return fd < 0 ? fd : 0;
+}
+static int host_close(struct ob_iop_file *f) { return ob_host_close(host_fd(f)); }
+static int host_read(struct ob_iop_file *f, void *ptr, int size) { return ob_host_read(host_fd(f), host_buf(ptr), size); }
+static int host_write(struct ob_iop_file *f, void *ptr, int size) { return ob_host_write(host_fd(f), host_buf(ptr), size); }
+static int host_lseek(struct ob_iop_file *f, int offset, int whence) {
+    return ob_host_lseek(host_fd(f), offset, whence);
+}
+#define HOST_PATH_OP(op) \
+    static int host_##op(struct ob_iop_file *f, const char *name) { \
+        char path[262]; \
+        (void)f; \
+        host_path(path, name); \
+        return ob_host_##op(path); \
+    }
+HOST_PATH_OP(remove)
+HOST_PATH_OP(mkdir)
+HOST_PATH_OP(rmdir)
+static int host_dopen(struct ob_iop_file *f, const char *name) {
+    char path[262];
+    int fd;
+    host_path(path, name);
+    fd = ob_host_dopen(path);
+    if (fd >= 0) f->privdata = (void *)(uintptr_t)fd;
+    return fd < 0 ? fd : 0;
+}
+static int host_dclose(struct ob_iop_file *f) { return ob_host_dclose(host_fd(f)); }
+static int host_dread(struct ob_iop_file *f, struct ob_io_dirent *d) { return ob_host_dread(host_fd(f), host_buf(d)); }
+static int host_getstat(struct ob_iop_file *f, const char *name, struct ob_io_stat *st) {
+    char path[262];
+    (void)f;
+    host_path(path, name);
+    return ob_host_getstat(path, host_buf(st));
+}
+static struct ob_iop_device_ops host_ops = {
+    OP(dev_nop), OP(dev_nop), OP(dev_unsupported), OP(host_open), OP(host_close), OP(host_read),
+    OP(host_write), OP(host_lseek), OP(dev_unsupported), OP(host_remove), OP(host_mkdir),
+    OP(host_rmdir), OP(host_dopen), OP(host_dclose), OP(host_dread), OP(host_getstat),
+    OP(dev_unsupported),
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /* not an extended driver */
+};
+static struct ob_iop_device host_device = {"host", OB_IO_DT_FS, 1, "host files", &host_ops};
 
 /* Only the built-in drivers: AddDrv runs init again, which a module's
    driver may not expect. */
 void ob_io_share_drivers(int (*add_drv)(struct ob_iop_device *d)) {
     add_drv(&rom_device);
     add_drv(&cd_device);
+    add_drv(&host_device);
 }
 
 /* ---- ioman exports ---- */
@@ -456,6 +528,7 @@ void ob_iop_ioman_init(void) {
         files[i].f.mode = i ? OB_IO_O_WRONLY : OB_IO_O_RDONLY;
         files[i].f.device = &tty_device;
     }
+    ob_io_add_driver(&host_device);
     ioman.f[0] = ioman.f[1] = ioman.f[2] = ioman.f[3] = FN(dev_nop);
     ioman.f[4] = FN(ob_io_open);    ioman.f[5] = FN(ob_io_close);
     ioman.f[6] = FN(ob_io_read);    ioman.f[7] = FN(ob_io_write);
