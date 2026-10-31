@@ -46,7 +46,10 @@ static void *lib_memmove(void *d, const void *s, uint32_t n) {
     return d;
 }
 static void *lib_memset(void *d, int c, uint32_t n) {
-    uint8_t *p = d; while (n--) *p++ = (uint8_t)c; return d;
+    uint8_t *p = d;
+    if ((uint8_t)c == 0) { ob_zero(d, n); return d; }
+    while (n--) *p++ = (uint8_t)c;
+    return d;
 }
 static void lib_bzero(void *d, uint32_t n) { ob_zero(d, n); }
 static int lib_memcmp(const void *a, const void *b, uint32_t n) {
