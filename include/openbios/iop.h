@@ -99,7 +99,12 @@ uint32_t ob_kernel_stack_base(void);
 /* Block the calling thread for about usec when it may block (thread context,
    interrupts enabled); otherwise return immediately. Returns 1 if it blocked. */
 int ob_kernel_pause(uint32_t usec);
-/* Interrupt context: end thread id's ob_kernel_pause early, if it is in one. */
+/* Thread context: as ob_kernel_pause, unless *flag is already set. The check
+   and the block happen with interrupts off, so an ob_kernel_end_delay in
+   between is not lost. Returns 0 in interrupt context. */
+int ob_kernel_pause_unless(volatile const int *flag, uint32_t usec);
+/* End thread id's ob_kernel_pause early, if it is in one. Unlike a wakeup,
+   this leaves the thread's wakeup count alone. */
 void ob_kernel_end_delay(int id);
 /* Change the calling thread's priority; returns the previous one. */
 int ob_kernel_set_priority(int priority);

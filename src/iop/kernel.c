@@ -806,10 +806,22 @@ int ob_kernel_pause(uint32_t usec) {
     DelayThread(usec);
     return 1;
 }
+int ob_kernel_pause_unless(volatile const int *flag, uint32_t usec) {
+    uint32_t s;
+    if (in_interrupt) return 0;
+    s = lock();
+    if (!*flag) DelayThread(usec);
+    unlock(s);
+    return 1;
+}
 void ob_kernel_end_delay(int id) {
+    uint32_t s = lock();
     struct obk_thread *t = obk_thread(&k, id);
-    if (t && t->used && t->status == OBK_THS_WAIT && t->wait_type == OBK_WAIT_DELAY)
+    if (t && t->used && t->status == OBK_THS_WAIT && t->wait_type == OBK_WAIT_DELAY) {
         obk_thread_release_wait(&k, id);
+        maybe_preempt();
+    }
+    unlock(s);
 }
 int ob_kernel_current_thread(void) { return k.current; }
 uint32_t ob_kernel_stack_base(void) {

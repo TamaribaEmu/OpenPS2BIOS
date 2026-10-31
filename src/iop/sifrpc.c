@@ -378,10 +378,13 @@ static int wait_slot(uint32_t cd, int nowait) {
 }
 static void wait_done(int slot) {
     /* Thread 1 delivers the EE's answers itself, so when it is the waiter it
-       must keep polling SIF instead of sleeping. */
+       must keep polling SIF instead of sleeping. Others wait in a delay that
+       RPC_END ends, not in SleepThread: a wakeup that arrives before the
+       caller sleeps would stay counted and end the module's own next
+       SleepThread early (Area 51's sound driver then loses its thread list). */
     while (!waits[slot].done) {
         if (ob_kernel_current_thread() == 1) { if (!ob_iop_sif_poll()) ob_kernel_pause(100); }
-        else ob_kernel_sleep();
+        else ob_kernel_pause_unless(&waits[slot].done, 100000);
     }
     waits[slot].cd = 0;
 }
@@ -404,7 +407,7 @@ int ob_iop_module_rpc_end(const uint32_t *packet) {
         return 1;
     }
     waits[i].done = 1;
-    ob_kernel_wakeup(waits[i].thread);
+    ob_kernel_end_delay(waits[i].thread);
     return 1;
 }
 static int request(uint32_t cid, uint32_t cd, const uint32_t *words, unsigned count,
