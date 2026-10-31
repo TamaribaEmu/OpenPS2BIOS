@@ -243,29 +243,33 @@ static const char *skip_device(const char *path) {
 
 int ob_iso_find(const struct ob_iso *iso, const char *path,
                 struct ob_iso_file *file) {
-    const char *cursor;
+    const char *cursor, *end;
     uint32_t dir_lba, dir_size;
     size_t path_length = 0;
     if (!iso || !iso->read_sector || !path || !file) return OB_EINVAL;
     while (path_length <= OB_ISO_PATH_MAX && path[path_length]) ++path_length;
     if (!path_length || path_length > OB_ISO_PATH_MAX) return OB_EINVAL;
+    /* Trailing blanks are not part of the name; some games pass
+       "NAME;1 ". */
+    while (path_length && path[path_length - 1] == ' ') --path_length;
+    end = path + path_length;
     cursor = skip_device(path);
-    while (*cursor == '/' || *cursor == '\\') ++cursor;
+    while (cursor < end && (*cursor == '/' || *cursor == '\\')) ++cursor;
     dir_lba = iso->root_lba;
     dir_size = iso->root_size;
-    if (!*cursor) return OB_EINVAL;
-    while (*cursor) {
+    if (cursor >= end) return OB_EINVAL;
+    while (cursor < end) {
         const char *start = cursor;
         size_t length;
         struct iso_record found;
         int final, rc;
-        while (*cursor && *cursor != '/' && *cursor != '\\') {
+        while (cursor < end && *cursor != '/' && *cursor != '\\') {
             if ((uint8_t)*cursor >= 0x80) return OB_EINVAL;
             ++cursor;
         }
         length = (size_t)(cursor - start);
-        while (*cursor == '/' || *cursor == '\\') ++cursor;
-        final = !*cursor;
+        while (cursor < end && (*cursor == '/' || *cursor == '\\')) ++cursor;
+        final = cursor >= end;
         if (!length) continue;
         if (length == 1 && start[0] == '.') continue;
         if (length == 2 && start[0] == '.' && start[1] == '.') return OB_EINVAL;

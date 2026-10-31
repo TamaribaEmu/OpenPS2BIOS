@@ -98,7 +98,7 @@ static void log_text(const uint8_t *p, uint32_t max) {
     text[n] = 0;
     ob_puts(text);
 }
-/* Map "rom0:NAME" to a ROM directory entry. Other devices are not served yet. */
+/* Map "rom0:NAME" to a ROM directory entry. */
 static int ob_rom_name_from_path(const char *path, struct ob_rom_file *out) {
     char name[11];
     unsigned i;
@@ -111,9 +111,26 @@ static int ob_rom_name_from_path(const char *path, struct ob_rom_file *out) {
     name[i] = 0;
     return ob_rom_find((const void *)0xbfc00000u, OB_ROM_SIZE, name, out);
 }
+/* Read a whole file from any ioman device into a new sysmem block. */
+static int io_load_file(const char *path, void **data, uint32_t *size) {
+    int fd = ob_io_open(path, OB_IO_O_RDONLY), n = fd;
+    void *block = 0;
+    if (fd < 0) return fd;
+    n = ob_io_lseek(fd, 0, OB_IO_SEEK_END);
+    if (n > 0 && ob_io_lseek(fd, 0, OB_IO_SEEK_SET) == 0 &&
+        (block = ob_sysmem_alloc(OB_ALLOC_LAST, (uint32_t)n + 16, 0)) && ob_io_read(fd, block, n) == n) {
+        ob_io_close(fd);
+        *data = block;
+        *size = (uint32_t)n;
+        return OB_OK;
+    }
+    if (block) ob_sysmem_free(block);
+    ob_io_close(fd);
+    return OB_EFORMAT;
+}
 char ob_iop_loadfile_version[4] = {'3', '1', '0', '0'};
 /* LOADFILE (public _lf_module_load_arg: {arg_len/result, modres, path[252],
-   args[252]}). Modules load from rom0:; other devices fail with KE_NOFILE. */
+   args[252]}). Modules load from rom0:, the disc, or any ioman device. */
 static uint32_t load_file(uint32_t number, const uint8_t *in, uint32_t in_size,
                           uint8_t *out, uint32_t out_size) {
     if (number == 0xff && out_size >= 4) {
@@ -186,11 +203,12 @@ static uint32_t load_file(uint32_t number, const uint8_t *in, uint32_t in_size,
             id = ob_rom_name_from_path(path, &rom) ? KE_NOFILE :
                 ob_iop_load_module(rom.data, rom.size, path, (const char *)in + 8 + 252,
                                    args_len, &modres);
-        } else if (path[0] == 'c' && path[1] == 'd' && path[2] == 'r' && path[3] == 'o' &&
-                   path[4] == 'm') {
+        } else {
             void *file;
             uint32_t size;
-            if (!ob_iop_cd_load_file(path, &file, &size)) {
+            int cd = path[0] == 'c' && path[1] == 'd' && path[2] == 'r' && path[3] == 'o' &&
+                     path[4] == 'm';
+            if (!(cd ? ob_iop_cd_load_file(path, &file, &size) : io_load_file(path, &file, &size))) {
                 /* Free the file before the module starts: start routines often
                    take most of the remaining memory in one block. */
                 id = ob_iop_load_module_only(file, size, path);
@@ -198,7 +216,7 @@ static uint32_t load_file(uint32_t number, const uint8_t *in, uint32_t in_size,
                 if (id >= 0)
                     id = ob_iop_start_module(id, path, (const char *)in + 8 + 252, args_len, &modres);
             } else id = KE_NOFILE;
-        } else id = KE_NOFILE; /* Other devices are not served yet. */
+        }
         if (id < 0) {
             ob_puts("[openbios:iop] loadfile "); ob_puts(path); ob_puts(" failed error=");
             ob_puthex((uint32_t)id); ob_puts("\n");
@@ -511,6 +529,17 @@ static uint32_t cd_ncmd(uint32_t number, const uint8_t *in, uint32_t in_size,
     case 1: case 3: /* READ, DVDREAD */
         if (in_size < 24) break;
         return cd_read_ee(in, out);
+    case 4: { /* GETTOC: {EE buffer} -> {result, is DVD}; 2064 bytes for DVD, 1024 for CD */
+        uint8_t *toc;
+        int n;
+        if (in_size < 4 || !(toc = ob_sysmem_alloc(OB_ALLOC_LAST, 2064, 0))) break;
+        n = ob_iop_cd_read_toc(toc);
+        if (n > 0 && send_ee(toc, ob_le32(in), (uint32_t)n)) n = 0;
+        ob_sysmem_free(toc);
+        put32(out, n > 0);
+        put32(out + 4, n > 1024);
+        return 8;
+    }
     case 5: case 6: case 7: case 8: /* SEEK, STANDBY, STOP, PAUSE: drive state only */
         put32(out, 1);
         return 4;

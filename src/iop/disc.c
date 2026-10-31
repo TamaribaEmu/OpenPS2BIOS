@@ -3,6 +3,7 @@
 #include "openbios/sif.h"
 #include "openbios/iso9660.h"
 #include "openbios/iop.h"
+#include "openbios/ioman.h"
 
 #define REG8(addr) (*(volatile uint8_t *)(uintptr_t)(addr))
 #define REG32(addr) (*(volatile uint32_t *)(uintptr_t)(addr))
@@ -320,10 +321,11 @@ int ob_iop_cd_load_file(const char *path, void **data, uint32_t *size) {
 void ob_iop_disc_tick(void) {
     volatile struct ob_disc_mailbox *m = (void *)OB_DISC_MAILBOX_IOP;
     media();
-    if (m->magic == OB_DISC_MAGIC && (m->state == 1 || m->state == 3 || m->state == 5)) ob_kernel_wakeup(1);
+    if (m->magic == OB_DISC_MAGIC && (m->state & 1)) ob_kernel_wakeup(1);
 }
 void ob_iop_disc_service(void) {
     volatile struct ob_disc_mailbox *m = (void *)OB_DISC_MAILBOX_IOP;
+    int file_fd = -1;
     m->state = 0;
     m->result = 0;
     m->detail = 0;
@@ -342,6 +344,29 @@ void ob_iop_disc_service(void) {
                 m->result = 0;
                 __asm__ volatile ("nop" ::: "memory");
                 m->state = 6;
+                continue;
+            }
+            if (m->state == 7) {
+                if (file_fd >= 0) ob_io_close(file_fd);
+                file_fd = ob_io_open((const char *)OB_DISC_BUFFER_IOP, OB_IO_O_RDONLY);
+                m->result = file_fd < 0 ? file_fd : ob_io_lseek(file_fd, 0, OB_IO_SEEK_END);
+                __asm__ volatile ("nop" ::: "memory");
+                m->state = 8;
+                continue;
+            }
+            if (m->state == 9) {
+                uint32_t n = m->detail > OB_DISC_BULK_SECTORS * 2048u ? OB_DISC_BULK_SECTORS * 2048u : m->detail;
+                int r = ob_io_lseek(file_fd, (int)m->lba, OB_IO_SEEK_SET);
+                m->result = r < 0 ? r : ob_io_read(file_fd, (void *)OB_DISC_BULK_IOP, (int)n);
+                __asm__ volatile ("nop" ::: "memory");
+                m->state = 10;
+                continue;
+            }
+            if (m->state == 11) {
+                m->result = file_fd < 0 ? 0 : ob_io_close(file_fd);
+                file_fd = -1;
+                __asm__ volatile ("nop" ::: "memory");
+                m->state = 12;
                 continue;
             }
             if (m->state == 1) {

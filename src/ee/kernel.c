@@ -294,6 +294,13 @@ static int add_intc(int cause, uint32_t address, int position, uint32_t gp, uint
     *link = i + 1;
     return i + 1;
 }
+/* The remove calls return the handlers left on that cause: callers re-enable
+   the interrupt they disabled only while others still use it. */
+static int count_handlers(int id, const struct intc_handler *table) {
+    int n = 0;
+    for (; id; id = table[id - 1].next) ++n;
+    return n;
+}
 static int remove_intc(int cause, int id) {
     int *link;
     if (cause < 0 || cause >= 15 || id < 1 || id > 32) return OB_EINVAL;
@@ -302,7 +309,7 @@ static int remove_intc(int cause, int id) {
     if (!*link) return OB_EINVAL;
     *link = intc_handlers[id - 1].next;
     ob_zero(&intc_handlers[id - 1], sizeof(intc_handlers[0]));
-    return OB_OK;
+    return count_handlers(intc_heads[cause], intc_handlers);
 }
 static int add_dmac(int cause, uint32_t address, int position, uint32_t gp, uint32_t arg) {
     int i, *link;
@@ -327,7 +334,7 @@ static int remove_dmac(int cause, int id) {
     if (!*link) return -1;
     *link = dmac_handlers[id - 1].next;
     ob_zero(&dmac_handlers[id - 1], sizeof(dmac_handlers[0]));
-    return OB_OK;
+    return count_handlers(dmac_heads[cause], dmac_handlers);
 }
 /* R5900 CACHE index operations, encoded manually because the assembler targets
    MIPS II: CACHE op,0($t0). Index is address bits 6 and up; bit 0 selects the way. */
@@ -544,6 +551,13 @@ static struct ob_ee_frame *dispatch_interrupt(struct ob_ee_frame *f) {
 #endif
     return schedule_frame(f);
 }
+/* "dev:path" on a device other than the disc (e.g. host:), which programs
+   load through the IOP's ioman; bare paths are ISO paths on the disc. */
+static int on_other_device(const char *path) {
+    unsigned n = 0;
+    while (path[n] && path[n] != ':') ++n;
+    return path[n] == ':' && !ob_equal(path, "cdrom", 5);
+}
 
 struct ob_ee_frame *ob_ee_exception(struct ob_ee_frame *f) {
     int32_t nr = (int32_t)f->gpr[3][0]; /* PS2 ABI uses v1, not MIPS Linux v0. */
@@ -722,7 +736,7 @@ struct ob_ee_frame *ob_ee_exception(struct ob_ee_frame *f) {
                 /* No such ROM program (e.g. the boot screen): boot the disc. */
                 if (ob_ee_disc_boot(&entry)) { set_result(f, OB_ENOTFOUND); break; }
             }
-        } else if (ob_ee_disc_load(path, &entry)) {
+        } else if (on_other_device(path) ? ob_ee_file_load(path, &entry) : ob_ee_disc_load(path, &entry)) {
             ob_puts("[openbios:ee] LoadExecPS2 failed\n");
             set_result(f, OB_ENOTFOUND); break;
         }
@@ -765,7 +779,9 @@ struct ob_ee_frame *ob_ee_exception(struct ob_ee_frame *f) {
         bit = 1u << a0;
         was_enabled = !!(INTC_MASK & bit);
         if ((int)was_enabled != enable) INTC_MASK = bit; /* Write-one toggles mask. */
-        set_result(f, (int32_t)was_enabled); break;
+        /* 1 only when this call changed the mask, as for EnableDmac: callers
+           undo their EnableIntc only if it returned 1. */
+        set_result(f, (int)was_enabled != enable); break;
     }
     case 0x74: /* Register a guest handler; zero restores the built-in service. */
         if (a0 >= sizeof(syscall_handlers) / sizeof(syscall_handlers[0]) ||

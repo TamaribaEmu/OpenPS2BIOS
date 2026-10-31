@@ -10,7 +10,13 @@
    state 5/6: drive status request/completion; detail returns the disc type
               (CDVD register 0x0f) | drive status (0x0a) << 8.
    state 3/4: SIF0 send request/completion, lba is EE physical destination,
-              detail is payload quadwords (1..128), buffer holds payload. */
+              detail is payload quadwords (1..128), buffer holds payload.
+   state 7/8: open the file named in buffer through ioman (any device);
+              result is its size or a negative error.
+   state 9/10: read detail bytes (up to the bulk buffer) at offset lba of
+              the open file into the bulk buffer; result is the byte count.
+   state 11/12: close the open file.
+   Requests use odd states and completions the next even one. */
 #define OB_DISC_MAGIC 0x4f424344u
 #define OB_DISC_MAILBOX_IOP 0xa0042f00u
 #define OB_DISC_MAILBOX_EE 0xbc042f00u
@@ -58,6 +64,12 @@ void ob_ee_disc_invalidate(void);
 int ob_ee_disc_boot(uint32_t *entry);
 int ob_ee_rom_load(const char *name, uint32_t *entry);
 int ob_ee_disc_load(const char *path, uint32_t *entry);
+/* Load an ELF from an ioman device through the IOP (e.g. "host:game.elf"). */
+int ob_ee_file_load(const char *path, uint32_t *entry);
+/* File access through the mailbox: open returns the size. */
+int ob_ee_file_open(const char *path);
+int ob_ee_file_read(uint32_t offset, void *out, uint32_t size);
+void ob_ee_file_close(void);
 /* Arguments the next program's SetupThread receives (copied). */
 void ob_ee_set_exec_args(int argc, const char *const *argv);
 #endif
