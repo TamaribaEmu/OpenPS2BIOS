@@ -391,6 +391,38 @@ static int ReferThreadRunStatus(int id, uint32_t *stat, uint32_t size) {
     unlock(s);
     return OBK_OK;
 }
+/* thbase #47 (Tomb Raider Underworld's IMEMMAN imports it). Types per ps2sdk:
+   1-6 list threads and the other object kinds, 7-9 threads by state. The idle
+   thread is left out. Types that name an object's wait list aren't kept here. */
+static int id_listed(int type, unsigned i) {
+    const struct obk_thread *t = &k.threads[i];
+    switch (type) {
+    case 1: return i < OBK_THREADS && t->used && (int)i + 1 != idle_thread;
+    case 2: return i < OBK_SEMAS && k.semas[i].used;
+    case 3: return i < OBK_EVENTS && k.events[i].used;
+    case 4: return i < OBK_MBXS && k.mbxs[i].used;
+    case 5: return i < OBK_VPLS && k.vpls[i].used;
+    case 6: return i < OBK_FPLS && k.fpls[i].used;
+    case 7: return i < OBK_THREADS && t->used && t->status == OBK_THS_WAIT && t->wait_type == OBK_WAIT_SLEEP;
+    case 8: return i < OBK_THREADS && t->used && t->status == OBK_THS_WAIT && t->wait_type == OBK_WAIT_DELAY;
+    default: return i < OBK_THREADS && t->used && t->status == OBK_THS_DORMANT;
+    }
+}
+static int GetThreadmanIdList(int type, int *buf, int size, int *count) {
+    unsigned i;
+    int written = 0, found = 0;
+    uint32_t s;
+    if (in_interrupt) return OBK_ILLEGAL_CONTEXT;
+    if (type < 1 || type > 9) return OBK_ILLEGAL_TYPE;
+    s = lock();
+    for (i = 0; i < OBK_THREADS; ++i) if (id_listed(type, i)) {
+        if (written < size) buf[written++] = (int)i + 1;
+        ++found;
+    }
+    unlock(s);
+    if (count) *count = found;
+    return written;
+}
 static int SleepThread(void) {
     uint32_t s;
     int r;
@@ -1003,6 +1035,7 @@ void ob_iop_kernel_libraries_init(void) {
     thbase.f[39] = FN(USec2SysClock); thbase.f[40] = FN(SysClock2USec);
     thbase.f[42] = FN(GetThreadCurrentPriority); thbase.f[43] = FN(GetSystemTimeLow);
     thbase.f[45] = FN(ReferThreadRunStatus);
+    thbase.f[47] = FN(GetThreadmanIdList);
     thsemap.f[4] = FN(CreateSema); thsemap.f[5] = FN(DeleteSema);
     thsemap.f[6] = FN(SignalSema); thsemap.f[7] = FN(iSignalSema);
     thsemap.f[8] = FN(WaitSema);   thsemap.f[9] = FN(PollSema);
