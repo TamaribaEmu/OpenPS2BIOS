@@ -26,7 +26,6 @@ void ob_ee_tlb_read(uint32_t index, uint32_t out[4]);
 int ob_ee_tlb_probe(uint32_t hi);
 void ob_ee_set_wired(uint32_t count);
 void ob_ee_kernel_init(void);
-void ob_ee_kernel_strict(int enabled);
 void *ob_ee_user_pointer(uint32_t address, uint32_t size);
 void ob_ee_deci2_init(void);
 void ob_ee_sif_init(void);

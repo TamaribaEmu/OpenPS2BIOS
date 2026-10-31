@@ -15,7 +15,6 @@ static uint32_t heap_end;
 uint32_t setdma_calls, setdma_zero;
 #endif
 static uint32_t gs_imr; /* Programs start with GS IMR 0. */
-static int strict_syscalls;
 static uint32_t syscall_handlers[0x130];
 static struct ob_ee_frame *interrupt_frame;
 extern void ob_ee_idle(void);
@@ -226,7 +225,6 @@ void ob_ee_kernel_init(void) {
     ob_ee_deci2_init();
     ob_ee_sif_init();
 }
-void ob_ee_kernel_strict(int enabled) { strict_syscalls = enabled; }
 
 
 void ob_ee_vectors_init(void) {
@@ -962,7 +960,6 @@ struct ob_ee_frame *ob_ee_exception(struct ob_ee_frame *f) {
         ob_puts(" epc="); ob_puthex(f->epc - 4); ob_puts("\n");
         ob_puts("[openbios:ee] arguments="); ob_puthex(a0); ob_puts(" ");
         ob_puthex(a1); ob_puts(" "); ob_puthex(a2); ob_puts("\n");
-        if (strict_syscalls) ob_halt();
         set_result(f, OB_ENOSYS);
         break;
     }

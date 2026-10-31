@@ -26,7 +26,6 @@ void ob_ee_main(void) {
     if (result == OB_ENOTFOUND) {
         /* No embedded program: EELOAD runs the boot screen (rom0:OSDSYS),
            which waits for a disc. */
-        ob_ee_kernel_strict(1);
         ob_ee_install_eeload();
         ob_puts("[openbios:ee] starting EELOAD\n");
         ob_ee_interrupts_enable();
