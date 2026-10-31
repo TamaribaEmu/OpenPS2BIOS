@@ -529,6 +529,17 @@ static uint32_t cd_ncmd(uint32_t number, const uint8_t *in, uint32_t in_size,
     case 1: case 3: /* READ, DVDREAD */
         if (in_size < 24) break;
         return cd_read_ee(in, out);
+    case 4: { /* GETTOC: {EE buffer} -> {result, is DVD}; 2064 bytes for DVD, 1024 for CD */
+        uint8_t *toc;
+        int n;
+        if (in_size < 4 || !(toc = ob_sysmem_alloc(OB_ALLOC_LAST, 2064, 0))) break;
+        n = ob_iop_cd_read_toc(toc);
+        if (n > 0 && send_ee(toc, ob_le32(in), (uint32_t)n)) n = 0;
+        ob_sysmem_free(toc);
+        put32(out, n > 0);
+        put32(out + 4, n > 1024);
+        return 8;
+    }
     case 5: case 6: case 7: case 8: /* SEEK, STANDBY, STOP, PAUSE: drive state only */
         put32(out, 1);
         return 4;
