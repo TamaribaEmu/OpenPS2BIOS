@@ -233,6 +233,13 @@ static int prefix_equal(const char *path, const char *prefix, size_t length) {
         if (!path[i] || !ascii_equal((uint8_t)path[i], (uint8_t)prefix[i])) return 0;
     return 1;
 }
+/* Skip the device: "cdrom0:" or "cdrom:" without a unit number. */
+static const char *skip_device(const char *path) {
+    size_t n = 5;
+    if (!prefix_equal(path, "cdrom", 5)) return path;
+    while (path[n] >= '0' && path[n] <= '9') ++n;
+    return path[n] == ':' ? path + n + 1 : path;
+}
 
 int ob_iso_find(const struct ob_iso *iso, const char *path,
                 struct ob_iso_file *file) {
@@ -246,8 +253,7 @@ int ob_iso_find(const struct ob_iso *iso, const char *path,
        "NAME;1 ". */
     while (path_length && path[path_length - 1] == ' ') --path_length;
     end = path + path_length;
-    cursor = path;
-    if (prefix_equal(cursor, "cdrom0:", 7)) cursor += 7;
+    cursor = skip_device(path);
     while (cursor < end && (*cursor == '/' || *cursor == '\\')) ++cursor;
     dir_lba = iso->root_lba;
     dir_size = iso->root_size;
@@ -287,8 +293,7 @@ int ob_iso_lookup(const struct ob_iso *iso, const char *path, struct ob_iso_entr
     const char *cursor;
     uint32_t dir_lba, dir_size;
     if (!iso || !iso->read_sector || !path || !entry) return OB_EINVAL;
-    cursor = path;
-    if (prefix_equal(cursor, "cdrom0:", 7)) cursor += 7;
+    cursor = skip_device(path);
     dir_lba = iso->root_lba;
     dir_size = iso->root_size;
     /* The root directory itself. */
