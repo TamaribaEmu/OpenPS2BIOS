@@ -87,13 +87,15 @@ static int call_handler(int irq) {
 }
 static void dispatch_dma(void) {
     uint32_t d1 = DICR, d2 = DICR2, flags, ch;
+    /* The loops stop at the last pending channel: this runs on every DMA
+       interrupt, several per SIF RPC call. */
     flags = (d1 >> 24) & (d1 >> 16) & 0x7f;
-    for (ch = 0; ch < 7; ++ch) if (flags & (1u << ch)) {
+    for (ch = 0; flags >> ch; ++ch) if (flags & (1u << ch)) {
         DICR = (DICR & 0x00ffffffu) | (1u << (24 + ch)); /* Flags are write-one-to-clear. */
         if (!call_handler(0x20 + (int)ch)) DICR = (DICR & 0x00ffffffu) & ~(1u << (16 + ch));
     }
     flags = (d2 >> 24) & (d2 >> 16) & 0x3f;
-    for (ch = 0; ch < 6; ++ch) if (flags & (1u << ch)) {
+    for (ch = 0; flags >> ch; ++ch) if (flags & (1u << ch)) {
         DICR2 = (DICR2 & 0x00ffffffu) | (1u << (24 + ch));
         /* DMA9 (SIF0) stays enabled for the SIF layer even without a handler. */
         if (ch == 2) ob_iop_sif0_done();
@@ -105,7 +107,7 @@ static void dispatch_dma(void) {
 static void dispatch_interrupts(void) {
     uint32_t pending = I_STAT & I_MASK;
     int irq;
-    for (irq = 0; irq < 32; ++irq) {
+    for (irq = 0; irq < 32 && (pending >> irq); ++irq) {
         if (!(pending & (1u << irq))) continue;
         I_STAT = ~(1u << irq); /* Writing 0 acknowledges. */
         if (irq == INTR_TIMER5) {
@@ -174,6 +176,7 @@ void ob_iop_kernel_reset(void) {
             ob_zero(&k.threads[i], sizeof(k.threads[i]));
         }
     }
+    k.pick_valid = 0;
     ob_zero(k.semas, sizeof(k.semas));
     ob_zero(k.events, sizeof(k.events));
     for (i = 0; i < OBK_FPLS; ++i) if (k.fpls[i].used) ob_sysmem_free(k.fpls[i].mem);
@@ -473,7 +476,9 @@ static void SysClock2USec(iop_sys_clock_t *c, uint32_t *sec, uint32_t *usec) {
    expiry. Expiry is checked on the kernel tick (1 ms). */
 #define ALARMS 64
 static struct { uint32_t cb, arg, gp; uint64_t target; } alarms[ALARMS];
-static void drop_alarms(void) { ob_zero(alarms, sizeof(alarms)); }
+/* No alarm is due before this; the 1 ms tick skips the table until then. */
+static uint64_t alarm_next = UINT64_MAX;
+static void drop_alarms(void) { ob_zero(alarms, sizeof(alarms)); alarm_next = UINT64_MAX; }
 static int add_alarm(iop_sys_clock_t *c, uint32_t cb, uint32_t arg, uint32_t gp) {
     uint64_t delay;
     unsigned i, free_slot = ALARMS;
@@ -488,6 +493,7 @@ static int add_alarm(iop_sys_clock_t *c, uint32_t cb, uint32_t arg, uint32_t gp)
     alarms[free_slot].gp = gp;
     alarms[free_slot].target = ob_iop_system_time() + (delay ? delay : 1);
     alarms[free_slot].cb = cb;
+    if (alarms[free_slot].target < alarm_next) alarm_next = alarms[free_slot].target;
     return OBK_OK;
 }
 static int remove_alarm(uint32_t cb, uint32_t arg) {
@@ -498,9 +504,15 @@ static int remove_alarm(uint32_t cb, uint32_t arg) {
 }
 static void run_alarms(uint64_t now) {
     unsigned i;
+    if (now < alarm_next) return;
+    alarm_next = UINT64_MAX; /* Recomputed below; callbacks may add alarms. */
     for (i = 0; i < ALARMS; ++i) {
         uint32_t (*cb)(uint32_t), saved, again;
-        if (!alarms[i].cb || alarms[i].target > now) continue;
+        if (!alarms[i].cb) continue;
+        if (alarms[i].target > now) {
+            if (alarms[i].target < alarm_next) alarm_next = alarms[i].target;
+            continue;
+        }
         cb = (uint32_t (*)(uint32_t))(uintptr_t)alarms[i].cb;
         __asm__ volatile ("move %0, $28" : "=r"(saved));
         if (alarms[i].gp) __asm__ volatile ("move $28, %0" :: "r"(alarms[i].gp));
@@ -510,6 +522,7 @@ static void run_alarms(uint64_t now) {
         else {
             alarms[i].target += again;
             if (alarms[i].target <= now) alarms[i].target = now + again;
+            if (alarms[i].target < alarm_next) alarm_next = alarms[i].target;
         }
     }
 }

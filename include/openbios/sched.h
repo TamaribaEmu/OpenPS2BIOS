@@ -29,7 +29,7 @@ struct ob_thread {
     uint64_t order;
     struct ob_ee_frame frame;
 };
-struct ob_sema { int used; struct ob_sema_desc desc; uint32_t freed; /* delete sequence, 0 = never */ };
+struct ob_sema { int used; struct ob_sema_desc desc; };
 struct ob_scheduler {
     struct ob_thread threads[OB_MAX_THREADS];
     struct ob_sema semas[OB_MAX_SEMAS];
@@ -38,7 +38,11 @@ struct ob_scheduler {
     uint32_t exit_trampoline;
     int next_thread; /* Slot index where the next thread ID search starts. */
     int changed; /* Set by every state/priority change; lets ob_sched_finish skip its scan. */
-    uint32_t sema_deletes; /* Orders freed semaphore slots for reuse. */
+    /* Free semaphore IDs: deleted ones on a stack (most recent on top), then
+       the never-used ones from never_used + 1 up. */
+    int free_semas[OB_MAX_SEMAS];
+    int free_sema_count;
+    int never_used;
 };
 void ob_sched_init(struct ob_scheduler *s, uint32_t exit_trampoline);
 int ob_thread_create(struct ob_scheduler *s, const struct ob_thread_desc *d);

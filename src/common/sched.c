@@ -221,17 +221,15 @@ int ob_thread_terminate(struct ob_scheduler *s, int id) {
     return OB_OK;
 }
 int ob_sema_create(struct ob_scheduler *s, const struct ob_sema_desc *d) {
-    int i;
+    int pick;
     /* Only a negative initial count is rejected; init > max is accepted. */
-    int pick = -1;
     if (!d || d->init_count < 0) return OB_EINVAL;
     /* Reuse the most recently deleted ID first, then unused IDs in ascending
-       order. */
-    for (i = 0; i < OB_MAX_SEMAS; ++i) {
-        if (s->semas[i].used) continue;
-        if (pick < 0 || s->semas[i].freed > s->semas[pick].freed) pick = i;
-    }
-    if (pick < 0) return OB_ENOSPC;
+       order. Games create and delete one per RPC call, several times a frame,
+       so this must not scan the table. */
+    if (s->free_sema_count) pick = s->free_semas[--s->free_sema_count] - 1;
+    else if (s->never_used < OB_MAX_SEMAS) pick = s->never_used++;
+    else return OB_ENOSPC;
     s->semas[pick].used = 1;
     s->semas[pick].desc = *d;
     s->semas[pick].desc.count = d->init_count;
@@ -249,7 +247,7 @@ int ob_sema_delete(struct ob_scheduler *s, int id) {
             ready(s, t, OB_ENOTFOUND);
     }
     ob_zero(v, sizeof(*v));
-    v->freed = ++s->sema_deletes;
+    s->free_semas[s->free_sema_count++] = id;
     return id; /* Success returns the semaphore ID. */
 }
 int ob_sema_wait(struct ob_scheduler *s, int id, int poll) {

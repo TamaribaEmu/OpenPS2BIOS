@@ -245,10 +245,38 @@ static void reboot(const uint8_t *packet, uint32_t bytes) {
     REG32(0xbd000030u) = 0x70000; /* SIFINIT | CMDINIT | BOOTEND */
     ob_puts("[openbios:iop] reboot complete (native services; requested modules not loaded)\n");
 }
-/* IOP DMA channel 10 (SIF1 receive) completion: wake the service thread. */
+/* A call to a module's RPC server only needs queueing and a wakeup of the
+   server thread, so it is taken here like sifcmd does on a console. Going
+   through the service thread cost two more thread switches, and the request
+   could only be queued once the server thread had gone back to sleep: about
+   60 us more per call. Sonic Mega Collection Plus makes four such calls a
+   frame with little time to spare, and dropped frames. */
+static int take_module_call(void) {
+    struct ob_sif_status *status = (void *)OB_SIF_STATUS_IOP;
+    struct ob_rpc_request rpc;
+    uint32_t end = REG32(0xbf801530u), bytes;
+    /* Already taken by the service thread and the next transfer running. */
+    if (SIF1_CHCR & 0x01000000u) return 0;
+    if (end < (OB_SIF_CMD_BUFFER_IOP & 0x1fffffu) ||
+        end > (OB_SIF_CMD_BUFFER_IOP & 0x1fffffu) + 128) return 0;
+    bytes = end - (OB_SIF_CMD_BUFFER_IOP & 0x1fffffu);
+    if (bytes < 12 || ob_le32((const uint8_t *)OB_SIF_CMD_BUFFER_IOP + 8) != OB_SIF_CMD_RPC_CALL ||
+        ob_rpc_parse((const void *)OB_SIF_CMD_BUFFER_IOP, bytes, &rpc) != OB_OK ||
+        !ob_iop_module_rpc(&rpc)) return 0;
+    ob_zero((void *)OB_SIF_CMD_BUFFER_IOP, 128);
+    arm();
+    status->last_command = rpc.command;
+    status->result = OB_OK;
+    status->received_bytes = bytes;
+    status->last_argument = rpc.rpc_number;
+    ++status->received;
+    return 1;
+}
+/* IOP DMA channel 10 (SIF1 receive) completion: everything but module RPC
+   calls goes to the service thread. */
 static int sif1_interrupt(void *arg) {
     (void)arg;
-    ob_kernel_wakeup(1);
+    if (!take_module_call()) ob_kernel_wakeup(1);
     return 1;
 }
 static void sif_interrupt_init(void) {
@@ -316,9 +344,13 @@ static void other_data(const uint8_t *packet) {
 int ob_iop_sif_poll(void) {
     struct ob_sif_status *status = (void *)OB_SIF_STATUS_IOP;
     uint8_t packet[128];
-    uint32_t end, bytes;
+    uint32_t end, bytes, lock;
     int result;
-    if (SIF1_CHCR & 0x01000000u) return 0;
+    /* The receive interrupt may take module RPC calls itself
+       (take_module_call): taking the packet and re-arming must not
+       interleave with it. */
+    lock = sif_lock();
+    if (SIF1_CHCR & 0x01000000u) { sif_unlock(lock); return 0; }
     end = REG32(0xbf801530u);
     /* A command transfer must have ended inside the published buffer. */
     if (end < (OB_SIF_CMD_BUFFER_IOP & 0x1fffffu) ||
@@ -330,6 +362,7 @@ int ob_iop_sif_poll(void) {
     ob_copy(packet, (void *)OB_SIF_CMD_BUFFER_IOP, bytes);
     ob_zero((void *)OB_SIF_CMD_BUFFER_IOP, 128);
     arm();
+    sif_unlock(lock);
     {
         struct ob_rpc_request rpc;
         if (bytes >= 12 && ob_rpc_parse(packet, bytes, &rpc) == OB_OK) {
@@ -394,13 +427,15 @@ int ob_iop_sif_poll(void) {
     __asm__ volatile ("nop" ::: "memory");
     ++status->received;
     if (result) {
-        /* Commands without a handler are dropped; log each ID once. */
+        /* Commands without a handler are dropped; log each ID once. (Not
+           from the status block: the receive interrupt updates it too.) */
         static uint32_t reported[8];
+        uint32_t cid = bytes >= 12 ? ob_le32(packet + 8) : 0;
         unsigned k;
-        for (k = 0; k < 8 && reported[k] && reported[k] != status->last_command; ++k) {}
+        for (k = 0; k < 8 && reported[k] && reported[k] != cid; ++k) {}
         if (k < 8 && !reported[k]) {
-            reported[k] = status->last_command;
-            ob_puts("[openbios:iop] dropped SIF command="); ob_puthex(status->last_command);
+            reported[k] = cid;
+            ob_puts("[openbios:iop] dropped SIF command="); ob_puthex(cid);
             ob_puts(" error="); ob_puthex((uint32_t)result); ob_puts(" (reported once)\n");
         }
     }

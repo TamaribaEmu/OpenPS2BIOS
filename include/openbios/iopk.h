@@ -114,6 +114,8 @@ struct obk_kernel {
     unsigned top;     /* Thread slots ever used; scans stop here (games use a few dozen). */
     uint32_t order;
     uint64_t now;     /* System clock in IOP cycles. */
+    uint64_t next_wake; /* No delayed thread is due before this (0: not known yet). */
+    int picked, pick_valid; /* obk_pick's last answer, until a thread changes. */
 };
 
 void obk_init(struct obk_kernel *k);

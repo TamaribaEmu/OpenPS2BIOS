@@ -424,8 +424,14 @@ struct ob_ee_frame *ob_ee_resume_interrupt(void) {
     ob_ee_exception_depth = 1; /* Abandon callback/nested syscall stacks. */
     return schedule_frame(f);
 }
+/* Only the controllers named by Cause are read: IP2 is the INTC, IP3 the
+   DMAC. Besides being what the hardware reports, this keeps INTC_STAT reads
+   off the DMAC path: PCSX2 (INTC spin detection, on by default) skips the EE
+   ahead to its next event on an INTC_STAT read. SIF replies arrive as DMAC
+   interrupts several times a frame, and the skipped time made Sonic Mega
+   Collection Plus drop frames and its audio stutter. */
 static struct ob_ee_frame *dispatch_interrupt(struct ob_ee_frame *f) {
-    uint32_t pending = INTC_STAT & INTC_MASK;
+    uint32_t pending = (f->cause & 0x400) ? INTC_STAT & INTC_MASK : 0;
     unsigned cause;
     interrupt_frame = f;
 #ifdef OB_TRACE_SYSCALLS
@@ -508,7 +514,7 @@ static struct ob_ee_frame *dispatch_interrupt(struct ob_ee_frame *f) {
     }
     /* D_STAT low bits acknowledge completion; upper bits toggle masks.
        Write only the channel's status bit when dispatching. */
-    pending = DMAC_STAT;
+    pending = (f->cause & 0x800) ? DMAC_STAT : 0;
     pending = (pending & (pending >> 16)) & 0x3ffu;
     for (cause = 0; cause < 10; ++cause) if (pending & (1u << cause)) {
         int id;

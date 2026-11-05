@@ -17,6 +17,7 @@ static struct obk_event *event(struct obk_kernel *k, int id) {
     return &k->events[id - 1];
 }
 static void make_ready(struct obk_kernel *k, struct obk_thread *t, int32_t result) {
+    k->pick_valid = 0;
     t->status = OBK_THS_READY;
     t->wait_type = 0;
     t->wait_id = 0;
@@ -25,6 +26,7 @@ static void make_ready(struct obk_kernel *k, struct obk_thread *t, int32_t resul
 }
 static void block_current(struct obk_kernel *k, int type, int id) {
     struct obk_thread *t = obk_thread(k, k->current);
+    k->pick_valid = 0;
     t->status = OBK_THS_WAIT;
     t->wait_type = type;
     t->wait_id = id;
@@ -35,6 +37,7 @@ static int valid_priority(int p) { return p >= OBK_PRIORITY_MIN && p <= OBK_PRIO
 int obk_adopt_current(struct obk_kernel *k, int priority) {
     struct obk_thread *t = &k->threads[0];
     if (t->used) return OBK_ILLEGAL_THID;
+    k->pick_valid = 0;
     t->used = 1;
     if (!k->top) k->top = 1;
     t->status = OBK_THS_RUN;
@@ -51,6 +54,7 @@ int obk_thread_create(struct obk_kernel *k, uint32_t attr, uint32_t option, uint
     if (stack_size < 0x130) return OBK_ILLEGAL_STACK_SIZE;
     for (i = 0; i < OBK_THREADS; ++i) if (!k->threads[i].used) {
         struct obk_thread *t = &k->threads[i];
+        k->pick_valid = 0;
         ob_zero(t, sizeof(*t));
         t->used = 1;
         if (i >= k->top) k->top = i + 1;
@@ -68,6 +72,7 @@ int obk_thread_delete(struct obk_kernel *k, int id) {
     if (id == k->current) return OBK_NOT_DORMANT;
     if (!t) return OBK_UNKNOWN_THID;
     if (t->status != OBK_THS_DORMANT) return OBK_NOT_DORMANT;
+    k->pick_valid = 0;
     ob_zero(t, sizeof(*t));
     return OBK_OK;
 }
@@ -90,6 +95,7 @@ int obk_thread_start(struct obk_kernel *k, int id, uint32_t arg, uint32_t exit_r
 }
 int obk_thread_exit(struct obk_kernel *k) {
     struct obk_thread *t = obk_thread(k, k->current);
+    k->pick_valid = 0;
     t->status = OBK_THS_DORMANT;
     t->wait_type = 0;
     return OBK_BLOCK;
@@ -99,6 +105,7 @@ int obk_thread_terminate(struct obk_kernel *k, int id) {
     if (id == k->current) return OBK_ILLEGAL_THID;
     if (!t) return OBK_UNKNOWN_THID;
     if (t->status == OBK_THS_DORMANT) return OBK_DORMANT;
+    k->pick_valid = 0;
     t->status = OBK_THS_DORMANT;
     t->wait_type = 0;
     t->wait_id = 0;
@@ -110,6 +117,7 @@ int obk_thread_priority(struct obk_kernel *k, int id, int priority) {
     if (priority == 0) priority = t->init_priority;
     if (!valid_priority(priority)) return OBK_ILLEGAL_PRIORITY;
     if (t->status == OBK_THS_DORMANT) return OBK_DORMANT;
+    k->pick_valid = 0;
     t->priority = priority;
     if (t->status == OBK_THS_READY) t->order = ++k->order;
     return OBK_OK;
@@ -118,6 +126,7 @@ int obk_thread_rotate(struct obk_kernel *k, int priority) {
     struct obk_thread *cur = obk_thread(k, k->current);
     if (priority == 0 && cur) priority = cur->priority;
     if (!valid_priority(priority) && priority != OBK_PRIORITY_IDLE) return OBK_ILLEGAL_PRIORITY;
+    k->pick_valid = 0;
     /* Move the first thread of that priority (the runner if it has it) to the end. */
     if (cur && cur->priority == priority) cur->order = ++k->order;
     else {
@@ -165,18 +174,25 @@ int obk_delay(struct obk_kernel *k, uint64_t cycles) {
     struct obk_thread *t = obk_thread(k, k->current);
     block_current(k, OBK_WAIT_DELAY, 0);
     t->wake_time = k->now + cycles;
+    if (t->wake_time < k->next_wake) k->next_wake = t->wake_time;
     return OBK_BLOCK;
 }
+/* Runs on every 1 ms kernel tick: the thread scan is skipped until the
+   earliest delay is due. (A delay that ends early leaves next_wake too low,
+   which only costs one extra scan.) */
 uint64_t obk_tick(struct obk_kernel *k, uint64_t now) {
     uint64_t next = UINT64_MAX;
     unsigned i;
     if (now > k->now) k->now = now;
+    if (k->next_wake && k->now < k->next_wake)
+        return k->next_wake == UINT64_MAX ? UINT64_MAX : k->next_wake - k->now;
     for (i = 0; i < k->top; ++i) {
         struct obk_thread *t = &k->threads[i];
         if (!t->used || t->status != OBK_THS_WAIT || t->wait_type != OBK_WAIT_DELAY) continue;
         if (t->wake_time <= k->now) make_ready(k, t, OBK_OK);
         else if (t->wake_time - k->now < next) next = t->wake_time - k->now;
     }
+    k->next_wake = next == UINT64_MAX ? UINT64_MAX : k->now + next;
     return next;
 }
 
@@ -696,10 +712,14 @@ int obk_heap_free_size(void *heap) {
     return (int)n;
 }
 
+/* Runs on every interrupt and syscall return. The answer only changes when
+   a thread's state, priority or queue order does, and all of those clear
+   pick_valid, so the scan is skipped otherwise. */
 int obk_pick(struct obk_kernel *k) {
     struct obk_thread *best = 0;
     int id = 0;
     unsigned i;
+    if (k->pick_valid) return k->picked;
     for (i = 0; i < k->top; ++i) {
         struct obk_thread *t = &k->threads[i];
         if (!t->used || (t->status != OBK_THS_READY && t->status != OBK_THS_RUN)) continue;
@@ -709,6 +729,8 @@ int obk_pick(struct obk_kernel *k) {
             id = (int)i + 1;
         }
     }
+    k->picked = id;
+    k->pick_valid = 1;
     return id;
 }
 void obk_switch(struct obk_kernel *k, int id) {
