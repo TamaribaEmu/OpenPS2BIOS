@@ -110,6 +110,8 @@ void ob_kernel_end_delay(int id);
 int ob_kernel_set_priority(int priority);
 /* Create and start a kernel-owned thread; returns its ID or an error. */
 int ob_kernel_spawn(void (*entry)(void *), void *arg, int priority, uint32_t stack_size);
+/* Calls fn(arg) in interrupt context after at least `cycles` IOP cycles. */
+int ob_kernel_alarm(uint32_t cycles, uint32_t (*fn)(uint32_t), uint32_t arg);
 /* Send a SIF command packet (16-byte header first), transferring size bytes
    from src to EE dest beforehand; returns 0 on failure. */
 uint32_t ob_iop_send_cmd(uint32_t cid, void *packet, int psize, void *src, uint32_t dest, int size);

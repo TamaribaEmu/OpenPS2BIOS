@@ -132,8 +132,13 @@ static void read_worker(void *arg) {
         last_error = r == OB_OK ? ERR_NONE : abort_read ? ERR_ABORT : ERR_READ;
         busy = 0;
         trace("done", (uint32_t)r, (uint32_t)last_error, read_count);
-        if (stream_flag == 1 || stream_flag == 2)
+        if (stream_flag == 1 || stream_flag == 2) {
+            /* Stream drivers expect interrupt context here (they use the
+               i-variants of the alarm calls). */
+            uint32_t s = irq_lock();
             call_with_gp(stream_cb[stream_flag - 1], stream_gp[stream_flag - 1], 1);
+            irq_unlock(s);
+        }
         notify(FUNC_READ);
     }
 }
@@ -200,6 +205,16 @@ static uint32_t sceCdCallback(uint32_t fn) {
     callback_gp = current_gp();
     return old;
 }
+/* In stream mode every command completion also goes to the stream driver's
+   callback. A stream driver starts (and retries) its read chain by issuing
+   sceCdNop and continuing from that callback, so it runs afterwards, from
+   interrupt context, as the completion interrupt would on a console. */
+static uint32_t stream_command_done(uint32_t arg) {
+    (void)arg;
+    if (stream_flag == 1 || stream_flag == 2)
+        call_with_gp(stream_cb[stream_flag - 1], stream_gp[stream_flag - 1], 1);
+    return 0;
+}
 /* Drive commands without data; the callback reports completion. */
 static int simple_command(uint8_t cmd, const uint8_t *params, unsigned count, int function) {
     int r;
@@ -207,6 +222,7 @@ static int simple_command(uint8_t cmd, const uint8_t *params, unsigned count, in
     r = ob_iop_cd_ncommand(cmd, params, count);
     last_error = r < 0 ? ERR_READ : r;
     if (function) notify(function);
+    if (stream_flag == 1 || stream_flag == 2) ob_kernel_alarm(1, stream_command_done, 0);
     return r == 0;
 }
 static int sceCdNop(void) { return simple_command(0, 0, 0, 0); }
@@ -438,6 +454,7 @@ static int sceCdSC(int code, int *param) {
         *param = (int)poff_fn;
         return (int)poff_arg;
     case -17: return stream_timeout;
+    case -38: return CDVD_REG(0x0f); /* disc type; stream modules check it after each read */
     case -9: return 0x0101; /* module version */
     case -15: return sync_timeout;
     default:

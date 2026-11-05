@@ -545,8 +545,25 @@ static uint32_t cd_stream(const uint8_t *in) {
     default: return 0;
     }
 }
+/* EE streams belong to the "cdrom_stm0:" device of the stream module games
+   load (CDVDSTM), as with the public cdvdfsv: it keeps a ring of the size the
+   game gave to sceCdStInit and reads ahead into it. Without it, The Simpsons
+   Game's cutscene stream was read on demand 8 sectors at a time, and while the
+   drive served the game's other stream its audio ran dry and repeated 128 ms
+   blocks. Returns -1 when no module provides the device. */
+static int stream_device(int code, const uint8_t *in, uint32_t in_size, uint32_t *result) {
+    uint32_t packet[8];
+    uint32_t n = in_size < sizeof(packet) ? in_size : sizeof(packet);
+    int out = 0;
+    ob_zero(packet, sizeof(packet));
+    ob_copy(packet, in, n);
+    if (ob_io_devctl("cdrom_stm0:", code, packet, n, &out, 4) < 0) return -1;
+    *result = (uint32_t)out;
+    return 0;
+}
 static uint32_t cd_ncmd(uint32_t number, const uint8_t *in, uint32_t in_size,
                         uint8_t *out, uint32_t out_size) {
+    uint32_t result;
     if (out_size < 4) out_size = 4;
     ob_zero(out, out_size < 32 ? out_size : 32);
     switch (number) {
@@ -569,7 +586,11 @@ static uint32_t cd_ncmd(uint32_t number, const uint8_t *in, uint32_t in_size,
         return 4;
     case 9: /* STREAM */
         if (in_size < 16) break;
-        put32(out, cd_stream(in));
+        put32(out, stream_device(0x4396, in, in_size, &result) ? cd_stream(in) : result);
+        return 4;
+    case 10: /* CDDA STREAM: only through the stream module */
+        if (in_size < 16) break;
+        put32(out, stream_device(0x4398, in, in_size, &result) ? 0 : result);
         return 4;
     case 15: /* READCHAIN */
         if (in_size < 0x314) break;

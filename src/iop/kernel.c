@@ -502,29 +502,56 @@ static int remove_alarm(uint32_t cb, uint32_t arg) {
         if (alarms[i].cb == cb && alarms[i].arg == arg) { alarms[i].cb = 0; return OBK_OK; }
     return KE_NOTFOUND_ALARM;
 }
+/* The slot is freed before the callback runs: callbacks often cancel and set
+   their own alarm again (CDVDSTM retries a full stream ring that way), and
+   the new alarm may take this same slot. Clearing the slot afterwards wiped
+   it, and The Simpsons Game froze when its cutscene stream stopped reading. */
 static void run_alarms(uint64_t now) {
-    unsigned i;
+    unsigned i, j;
     if (now < alarm_next) return;
     alarm_next = UINT64_MAX; /* Recomputed below; callbacks may add alarms. */
     for (i = 0; i < ALARMS; ++i) {
-        uint32_t (*cb)(uint32_t), saved, again;
+        uint32_t (*cb)(uint32_t), saved, again, arg, gp;
+        uint64_t target;
         if (!alarms[i].cb) continue;
         if (alarms[i].target > now) {
             if (alarms[i].target < alarm_next) alarm_next = alarms[i].target;
             continue;
         }
         cb = (uint32_t (*)(uint32_t))(uintptr_t)alarms[i].cb;
+        arg = alarms[i].arg;
+        gp = alarms[i].gp;
+        target = alarms[i].target;
+        alarms[i].cb = 0;
         __asm__ volatile ("move %0, $28" : "=r"(saved));
-        if (alarms[i].gp) __asm__ volatile ("move $28, %0" :: "r"(alarms[i].gp));
-        again = cb(alarms[i].arg);
+        if (gp) __asm__ volatile ("move $28, %0" :: "r"(gp));
+        again = cb(arg);
         __asm__ volatile ("move $28, %0" :: "r"(saved));
-        if (!again) alarms[i].cb = 0;
-        else {
-            alarms[i].target += again;
-            if (alarms[i].target <= now) alarms[i].target = now + again;
-            if (alarms[i].target < alarm_next) alarm_next = alarms[i].target;
-        }
+        if (!again) continue;
+        /* Re-arm, unless the callback already set the same alarm again. */
+        for (j = 0; j < ALARMS; ++j)
+            if (alarms[j].cb == (uint32_t)(uintptr_t)cb && alarms[j].arg == arg) break;
+        if (j < ALARMS) continue;
+        for (j = 0; j < ALARMS && alarms[j].cb; ++j) {}
+        if (j == ALARMS) continue;
+        target += again;
+        if (target <= now) target = now + again;
+        alarms[j].arg = arg;
+        alarms[j].gp = gp;
+        alarms[j].target = target;
+        alarms[j].cb = (uint32_t)(uintptr_t)cb;
+        if (target < alarm_next) alarm_next = target;
     }
+}
+/* Run fn(arg) from the alarm list (interrupt context) once `cycles` have
+   passed, like a hardware completion interrupt would. */
+int ob_kernel_alarm(uint32_t cycles, uint32_t (*fn)(uint32_t), uint32_t arg) {
+    iop_sys_clock_t c;
+    uint32_t s;
+    int r;
+    c.lo = cycles; c.hi = 0;
+    s = lock(); r = add_alarm(&c, (uint32_t)(uintptr_t)fn, arg, 0); unlock(s);
+    return r;
 }
 static int SetAlarm(iop_sys_clock_t *c, uint32_t cb, uint32_t arg) {
     uint32_t s; int r;
