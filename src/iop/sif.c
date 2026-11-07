@@ -65,8 +65,10 @@ int ob_iop_sif0_send_chain(const struct ob_sif0_segment *seg, unsigned count) {
     int thread = interrupts_enabled();
     if (!seg || !count || count > 4) return OB_EINVAL;
     for (i = 0; i < count; ++i) {
+        /* The EE address goes into the tag as given; EE DMA drops its low four
+           bits. RPC clients may pass a receive buffer that is only 8-byte aligned. */
         uint32_t dest = ob_ee_physical(seg[i].ee_destination);
-        if (!seg[i].qwc || seg[i].qwc > 0xffff || (seg[i].iop_source & 3) || (dest & 15) ||
+        if (!seg[i].qwc || seg[i].qwc > 0xffff || (seg[i].iop_source & 3) ||
             dest < 0x00080000u || !ob_range(dest, seg[i].qwc * 16, 0x02000000u)) return OB_EINVAL;
         tags[i * 4] = (seg[i].iop_source & 0x1fffffu) | (i + 1 == count ? 0x80000000u : 0);
         tags[i * 4 + 1] = seg[i].qwc * 4;
