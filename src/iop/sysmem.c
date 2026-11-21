@@ -33,13 +33,23 @@ static int overlaps(uint32_t address, uint32_t size) {
             used[i].address < address + size) return 1;
     return 0;
 }
+/* Allocation and release run with interrupts off: module threads call
+   AllocSysMemory while the loader allocates too, and a thread preempted
+   between choosing a slot and filling it overwrote a live module's block
+   (MGS3: sdmain was loaded over kcej_sound_basic_lib). */
+static uint32_t lock(void) {
+    uint32_t s; __asm__ volatile ("mfc0 %0, $12\n\tnop" : "=r"(s));
+    __asm__ volatile ("mtc0 %0, $12\n\tnop\n\tnop" :: "r"(s & ~1u) : "memory");
+    return s;
+}
+static void unlock(uint32_t s) { __asm__ volatile ("mtc0 %0, $12\n\tnop\n\tnop" :: "r"(s) : "memory"); }
 static int free_slot(void) {
     unsigned i;
     for (i = 0; i < BLOCKS; ++i) if (!used[i].size) return (int)i;
     return -1;
 }
 /* Candidate starts are the region ends and the ends/starts of used blocks. */
-void *ob_sysmem_alloc(int type, uint32_t size, uint32_t address) {
+static void *alloc_locked(int type, uint32_t size, uint32_t address) {
     int slot = free_slot();
     uint32_t best = 0;
     int found = 0;
@@ -72,14 +82,22 @@ void *ob_sysmem_alloc(int type, uint32_t size, uint32_t address) {
     used[slot].size = size;
     return (void *)(uintptr_t)best;
 }
+void *ob_sysmem_alloc(int type, uint32_t size, uint32_t address) {
+    uint32_t s = lock();
+    void *p = alloc_locked(type, size, address);
+    unlock(s);
+    return p;
+}
 int ob_sysmem_free(void *block) {
-    uint32_t address = (uint32_t)(uintptr_t)block & 0x1fffffu;
+    uint32_t address = (uint32_t)(uintptr_t)block & 0x1fffffu, s = lock();
     unsigned i;
     for (i = 0; i < BLOCKS - 1; ++i)
         if (used[i].size && used[i].address == address) {
             used[i].size = 0;
+            unlock(s);
             return KE_OK;
         }
+    unlock(s);
     return KE_ILLEGAL_MEMBLOCK;
 }
 uint32_t ob_sysmem_free_size(void) {
