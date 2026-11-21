@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenPS2BIOS compatibility</title>
+<style>
+body { font-family: sans-serif; margin: 2em auto; max-width: 60em; padding: 0 1em;
+       color: #222; background: #fff; line-height: 1.4; }
+a { color: #0645ad; }
+h1 { font-size: 1.5em; margin-bottom: 0.2em; }
+p { margin: 0.5em 0; }
+input { font: inherit; padding: 0.2em 0.4em; width: 20em; max-width: 100%; margin: 0.8em 0; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #aaa; padding: 0.3em 0.6em; text-align: left; vertical-align: top; }
+th { background: #eee; }
+td.ok { background: #b7e1b0; }
+td.game { background: #d9edb0; }
+td.boot { background: #f6d3a5; }
+td.bad { background: #f2b3ab; }
+.legend { width: auto; }
+.legend td { border: none; padding: 0.1em 0.6em 0.1em 0; }
+.legend span { display: inline-block; width: 1em; height: 1em; border: 1px solid #aaa;
+               vertical-align: middle; margin-right: 0.3em; }
+.small { font-size: 0.9em; color: #555; }
+@media (prefers-color-scheme: dark) {
+  body { color: #ddd; background: #1b1b1b; }
+  a { color: #8ab4f8; }
+  th { background: #2c2c2c; }
+  th, td { border-color: #555; }
+  td.ok, td.game, td.boot, td.bad { color: #222; }
+  .small { color: #aaa; }
+}
+</style>
+</head>
+<body>
+<h1>OpenPS2BIOS compatibility</h1>
+<p>Games tested with <a href="https://github.com/TamaribaEmu/OpenPS2BIOS">OpenPS2BIOS</a> in PCSX2.</p>
+<p>To report a result, <a href="https://github.com/TamaribaEmu/OpenPS2BIOS/issues">open an issue</a> with the game edition,
+BIOS build, emulator version and how far you got.</p>
+
+<table class="legend"><tr>
+<td><span style="background:#b7e1b0"></span>Playable</td>
+<td><span style="background:#d9edb0"></span>In-game</td>
+<td><span style="background:#f6d3a5"></span>Boots</td>
+<td><span style="background:#f2b3ab"></span>Broken</td>
+</tr></table>
+
+<input id="filter" type="search" placeholder="Filter by name or serial" aria-label="Filter">
+<p class="small" id="count"></p>
+
+<table id="games">
+<thead><tr><th>Game / edition</th><th>Serial</th><th>Status</th><th>Notes</th></tr></thead>
+<tbody>
+<!-- One row per game or disc, kept in alphabetical order:
+     <tr><td>Name (Region)</td><td>SLUS-12345</td><td class="ok">Playable</td><td>notes</td></tr>
+     Status classes: ok = Playable, game = In-game, boot = Boots, bad = Broken.
+     Update "Last updated" at the bottom. -->
+<tr><td>Arctic Thunder (USA)</td><td>SLUS-20217</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Capcom Classics Collection Vol. 1 (USA)</td><td>SLUS-21316</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Crash Nitro Kart (Germany)</td><td>SLES-51511</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Crash Twinsanity (USA)</td><td>SLUS-20909</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Dragon Ball Z: Budokai Tenkaichi 4 (Beta XI, English)</td><td>SLUS-21978</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Drakengard (USA)</td><td>SLUS-20732</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Drakengard 2 (USA)</td><td>SLUS-21373</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Driven to Destruction (Europe)</td><td>SLES-52733</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Enter the Matrix (USA)</td><td>SLUS-20454</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Evil Dead: A Fistful of Boomstick (USA)</td><td>SLUS-20403</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Evil Dead: Regeneration (USA)</td><td>SLUS-21048</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>FIFA Soccer 14 (Brazil)</td><td>SLUS-27093</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Final Fantasy X International (Japan)</td><td>SLPS-25088</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Final Fantasy XI - Online (USA, Canada)</td><td>SCUS-97266</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Final Fantasy XII International Zodiac Job System (Japan)</td><td>SLPM-66750</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Gauntlet: Dark Legacy (USA)</td><td>SLUS-20047</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>God of War (USA)</td><td>SCUS-97399</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>God of War II (USA)</td><td>SCUS-97481</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Gran Turismo 4 (USA)</td><td>SCUS-97328</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Grand Theft Auto: San Andreas (USA)</td><td>SLUS-20946</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Guitar Hero II (USA)</td><td>SLUS-21447</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Inuyasha - The Secret of the Cursed Mask (USA)</td><td>SLUS-20913</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Jak 3 (Europe)</td><td>SCES-52460</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Jak and Daxter: The Precursor Legacy (USA, En/Fr/De/Es/It)</td><td>SCUS-97124</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Killzone (USA)</td><td>SCUS-97402</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Kingdom Hearts II Final Mix+ (Japan)</td><td>SLPM-66675</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>LEGO Star Wars II: The Original Trilogy (USA)</td><td>SLUS-21409</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Lemony Snicket's A Series of Unfortunate Events (USA)</td><td>SLUS-21078</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>The Matrix: Path of Neo (USA)</td><td>SLUS-21273</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Metal Gear Solid 2: Substance (USA)</td><td>SLUS-20554</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Metal Gear Solid 3: Subsistence (USA, Disc 1, Subsistence)</td><td>SLUS-21359</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Metal Gear Solid 3: Subsistence (USA, Disc 2, Persistence)</td><td>SLUS-21243</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Monster House (USA)</td><td>SLUS-21400</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Monster Hunter (Japan)</td><td>SLPM-65495</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Mortal Kombat: Armageddon (USA)</td><td>SLUS-21410</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Need for Speed: Hot Pursuit 2 (USA)</td><td>SLUS-20362</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Need for Speed: Underground 2 (USA)</td><td>SLUS-21065</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Official U.S. PlayStation Magazine Demo Disc 49 (USA)</td><td>SCUS-97158</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Persona 3 (Europe)</td><td>SLES-55018</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Persona 3 FES (USA, Party Control patch)</td><td>SLUS-21621</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Ratchet &amp; Clank (USA, En/Fr/De/Es/It)</td><td>SCUS-97199</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Ratchet &amp; Clank: Going Commando (USA, v2.00)</td><td>SCUS-97268</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Ratchet &amp; Clank: Size Matters (USA)</td><td>SCUS-97615</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Ratchet &amp; Clank: Up Your Arsenal (USA)</td><td>SCUS-97353</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Resident Evil: Dead Aim (USA)</td><td>SLUS-20669</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Secret Agent Clank (USA)</td><td>SCUS-97623</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Shadow of the Colossus (USA)</td><td>SCUS-97472</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Shin Megami Tensei: Devil Summoner - Raidou Kuzunoha vs. the Soulless Army (USA)</td><td>SLUS-21431</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Shin Megami Tensei: Devil Summoner 2 - Raidou Kuzunoha vs. King Abaddon (USA)</td><td>SLUS-21845</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Shin Megami Tensei: Digital Devil Saga (USA)</td><td>SLUS-20974</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Shin Megami Tensei: Digital Devil Saga 2 (USA)</td><td>SLUS-21152</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Shin Megami Tensei: Nocturne (USA)</td><td>SLUS-20911</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Shin Megami Tensei: Persona 3 FES (USA)</td><td>SLUS-21621</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Shin Megami Tensei: Persona 4 (USA)</td><td>SLUS-21782</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Silent Hill: Origins (USA)</td><td>SLUS-21731</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>The Simpsons Game (USA)</td><td>SLUS-21665</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>The Simpsons: Hit &amp; Run (USA)</td><td>SLUS-20624</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>The Simpsons: Road Rage (USA)</td><td>SLUS-20305</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>SOCOM: U.S. Navy SEALs (USA, Demo)</td><td>SCUS-97205</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Sonic Heroes (USA)</td><td>SLUS-20718</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Sonic Mega Collection Plus (USA)</td><td>SLUS-20917</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Street Fighter EX3 (USA)</td><td>SLUS-20130</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Tekken 4 (Europe)</td><td>SCES-50878</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Tomb Raider: Underworld (USA)</td><td>SLUS-21858</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Twisted Metal: Black (USA)</td><td>SCUS-97101</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Ty the Tasmanian Tiger 3: Night of the Quinkan (USA)</td><td>SLUS-21253</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Van Helsing (USA)</td><td>SLUS-20738</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Viewtiful Joe (USA)</td><td>SLUS-20951</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Worms Blast (Europe)</td><td>SLES-50589</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Xenosaga Episode I: Der Wille zur Macht (USA)</td><td>SLUS-20469</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Xenosaga Episode II: Jenseits von Gut und Böse (USA, Disc 1)</td><td>SLUS-20892</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Xenosaga Episode II: Jenseits von Gut und Böse (USA, Disc 2)</td><td>SLUS-21133</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Xenosaga Episode III: Also sprach Zarathustra (USA, Disc 1)</td><td>SLUS-21389</td><td class="ok">Playable</td><td></td></tr>
+<tr><td>Xenosaga Episode III: Also sprach Zarathustra (USA, Disc 2)</td><td>SLUS-21417</td><td class="ok">Playable</td><td></td></tr>
+</tbody>
+</table>
+
+<p class="small">Last updated 2026-11-22.</p>
+
+<script>
+var input = document.getElementById("filter");
+var rows = document.querySelectorAll("#games tbody tr");
+var count = document.getElementById("count");
+count.textContent = rows.length + " entries";
+input.addEventListener("input", function () {
+  var q = input.value.toLowerCase(), shown = 0;
+  rows.forEach(function (r) {
+    var hit = r.textContent.toLowerCase().indexOf(q) >= 0;
+    r.style.display = hit ? "" : "none";
+    if (hit) shown++;
+  });
+  count.textContent = shown + " of " + rows.length + " entries";
+});
+</script>
+</body>
+</html>

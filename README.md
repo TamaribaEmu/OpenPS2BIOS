@@ -16,9 +16,8 @@ Current version: 0.6
 
 ## Compatibility
 
-See the [game compatibility table](COMPATIBILITY.md) for individual results.
-Testing is still limited. Reaching a title screen or menu does not establish
-that gameplay, saving, sound or controller input works correctly.
+See the [game compatibility list](https://tamaribaemu.github.io/OpenPS2BIOS/) for the games
+tested so far, with their serials and status.
 
 OpenPS2BIOS is still in development. Results can change between BIOS builds and
 emulator versions.
