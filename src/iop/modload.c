@@ -104,10 +104,19 @@ static int StopModule(int id, int arglen, const char *args, int *result) {
     return ob_iop_stop_module(id, args, arglen > 0 ? (uint32_t)arglen : 0, result);
 }
 static int UnloadModule(int id) { return ob_iop_unload_module(id); }
+/* SetModuleFlags(id, flag): 0x40 is the only flag (fill the module's memory
+   when it is unloaded, a debugging aid). Tekken 5's IRX sets it. */
+static int SetModuleFlags(int id, int flag) {
+    struct ob_module_status status;
+    if (ob_intr_context()) return -100; /* KE_ILLEGAL_CONTEXT */
+    if (flag & ~0x40) return -220;      /* KE_ILLEGAL_FLAG */
+    if (ob_iop_module_status(id, &status) < 0) return KE_UNKNOWN_MODULE;
+    return KE_OK;
+}
 static int ret_zero(void) { return 0; }
 
 static struct { uint32_t magic, next; uint16_t version, mode; char name[8] __attribute__((nonstring));
-                uint32_t f[31]; } modload = {OB_IRX_EXPORT_MAGIC, 0, 0x0107, 0, "modload", {0}};
+                uint32_t f[33]; } modload = {OB_IRX_EXPORT_MAGIC, 0, 0x0107, 0, "modload", {0}};
 #define FN(p) ((uint32_t)(uintptr_t)(p))
 void ob_iop_modload_init(void) {
     kelf_path_callback = 0;
@@ -128,5 +137,6 @@ void ob_iop_modload_init(void) {
     modload.f[22] = FN(SearchModuleByName);
     modload.f[28] = FN(AllocLoadMemory);  modload.f[29] = FN(FreeLoadMemory);
     modload.f[23] = FN(SearchModuleByAddress);
-    ob_iop_register_builtin((void *)&modload, 30);
+    modload.f[30] = FN(SetModuleFlags);   modload.f[31] = FN(ret_zero);
+    ob_iop_register_builtin((void *)&modload, 32);
 }

@@ -43,19 +43,25 @@ static int load_elf(elf_read read, void *ctx, uint32_t file_size, uint32_t *entr
         if (*entry >= addr && *entry - addr < filesz) executable = 1;
     }
     if (!executable) return OB_EFORMAT;
-    for (i = 0; i < count; ++i) {
-        const uint8_t *ph = head + phoff + i * 32;
-        uint32_t off = ob_le32(ph + 4), addr = ob_le32(ph + 8), filesz = ob_le32(ph + 16),
-                 memsz = ob_le32(ph + 20);
-        uint8_t *dest = (uint8_t *)(uintptr_t)(0xa0000000u | addr);
-        int spr = addr >= 0x70000000u && ob_range(addr - 0x70000000u, memsz, 0x4000u);
-        if (ob_le32(ph) != 1 || (!memsz && !filesz) || (addr >= 0x02000000u && !spr)) continue;
-        if (spr) dest = (uint8_t *)(uintptr_t)addr; /* mapped by the kernel TLB */
-        if (filesz) {
-            result = read(ctx, off, dest, filesz);
-            if (result) return result;
+    /* Clear every segment's zero-filled part first, then read the file data.
+       A segment's bss may cover another segment's data: Tekken 5's last
+       segment is 23 MB of bss with its .y4 code inside it. */
+    for (want = 0; want < 2; ++want) {
+        for (i = 0; i < count; ++i) {
+            const uint8_t *ph = head + phoff + i * 32;
+            uint32_t off = ob_le32(ph + 4), addr = ob_le32(ph + 8), filesz = ob_le32(ph + 16),
+                     memsz = ob_le32(ph + 20);
+            uint8_t *dest = (uint8_t *)(uintptr_t)(0xa0000000u | addr);
+            int spr = addr >= 0x70000000u && ob_range(addr - 0x70000000u, memsz, 0x4000u);
+            if (ob_le32(ph) != 1 || (!memsz && !filesz) || (addr >= 0x02000000u && !spr)) continue;
+            if (spr) dest = (uint8_t *)(uintptr_t)addr; /* mapped by the kernel TLB */
+            if (!want) {
+                ob_zero(dest + filesz, memsz - filesz);
+            } else if (filesz) {
+                result = read(ctx, off, dest, filesz);
+                if (result) return result;
+            }
         }
-        ob_zero(dest + filesz, memsz - filesz);
     }
     return OB_OK;
 }
