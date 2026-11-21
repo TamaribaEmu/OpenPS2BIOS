@@ -184,12 +184,14 @@ static int sceCdDiskReady(int mode) {
 }
 static int sceCdCheckCmd(void) { return !busy; }
 static int sceCdGetError(void) { return last_error; }
-/* Bytes of the current or last read transferred so far; the count stays at the
-   full size after the read completes. Direct reads are tracked through the
-   drive DMA's address register. */
+/* Bytes of the current read transferred so far, 0 once no read is in
+   progress. DOA2's sound driver repeats a read until sceCdGetError() +
+   sceCdGetReadPos() is 0. Direct reads are tracked through the drive DMA's
+   address register. */
 static uint32_t sceCdGetReadPos(void) {
     uint32_t total = read_count * 2048u, pos;
-    if (!busy || ((uintptr_t)read_buffer & 3)) return read_done * 2048u;
+    if (!busy) return 0;
+    if ((uintptr_t)read_buffer & 3) return read_done * 2048u;
     pos = (*(volatile uint32_t *)0xbf8010b0u & 0x1fffffu) - ((uint32_t)(uintptr_t)read_buffer & 0x1fffffu);
     return pos <= total ? pos : 0;
 }

@@ -94,7 +94,10 @@ static void dispatch_dma(void) {
         DICR = (DICR & 0x00ffffffu) | (1u << (24 + ch)); /* Flags are write-one-to-clear. */
         if (!call_handler(0x20 + (int)ch)) DICR = (DICR & 0x00ffffffu) & ~(1u << (16 + ch));
     }
-    flags = (d2 >> 24) & (d2 >> 16) & 0x3f;
+    /* DICR2 channels go by their flag alone: SIF0/SIF1 completions set it even
+       with the channel's enable bit clear, and must still be served. DOA2's
+       sound driver calls DisableIntr(SIF1) and never re-enables it. */
+    flags = (d2 >> 24) & 0x3f;
     for (ch = 0; flags >> ch; ++ch) if (flags & (1u << ch)) {
         DICR2 = (DICR2 & 0x00ffffffu) | (1u << (24 + ch));
         /* DMA9 (SIF0) stays enabled for the SIF layer even without a handler. */
